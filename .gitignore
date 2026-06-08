@@ -1,4 +1,18 @@
-venv/
-__pycache__/
+# environment variables
 .env
 backend/.env
+
+# virtual env
+venv/
+backend/venv/
+
+# cache
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
