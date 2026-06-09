@@ -11,9 +11,9 @@ langchain-core
 langchain-text-splitters
 langchain-groq
 langgraph
+langchain-huggingface
 
 chromadb
-sentence-transformers
 
 pydantic
 typing-extensions
