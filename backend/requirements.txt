@@ -14,8 +14,6 @@ langgraph
 
 chromadb
 sentence-transformers
-transformers
-torch
 
 pydantic
 typing-extensions
