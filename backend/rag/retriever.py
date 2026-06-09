@@ -1,13 +1,17 @@
 import chromadb
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 client = chromadb.PersistentClient(path="rag/chroma_db")
 collection = client.get_or_create_collection("echo_docs")
 
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+def get_embeddings():
+    return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 
 def search_docs(query: str, k: int = 3):
+    embeddings = get_embeddings()
+
     query_embedding = embeddings.embed_query(query)
 
     results = collection.query(
@@ -15,4 +19,4 @@ def search_docs(query: str, k: int = 3):
         n_results=k
     )
 
-    return results["documents"][0]
+    return results.get("documents", [[]])[0]
