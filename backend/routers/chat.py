@@ -6,29 +6,38 @@ from agent.agent import run_agent
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
+
 # -------------------------
 # TOKEN → USER ID
 # -------------------------
 def get_user_id_from_token(authorization: str):
     try:
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Missing token")
+
         token = authorization.split(" ")[1]
-        payload = jwt.decode(token, "supersecretkey", algorithms=["HS256"])
+
+        payload = jwt.decode(
+            token,
+            "supersecretkey",
+            algorithms=["HS256"]
+        )
+
         return payload["sub"]
-    except:
+
+    except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
 # -------------------------
-# CHAT ENDPOINT (ECHO IA)
+# CHAT
 # -------------------------
 @router.post("/chat")
 def chat(request: ChatRequest, authorization: str = Header(None)):
 
     try:
-        # 1. usuario desde token
         user_id = get_user_id_from_token(authorization)
 
-        # 2. obtener game activo
         cursor.execute(
             """
             SELECT id
@@ -47,11 +56,9 @@ def chat(request: ChatRequest, authorization: str = Header(None)):
 
         game_id = game[0]
 
-        # 3. IA (ECHO + RAG + LangGraph)
         result = run_agent(request.message, game_id)
         response = result["response"]
 
-        # 4. guardar en base de datos
         cursor.execute(
             """
             INSERT INTO chat_history (game_id, message, response)
@@ -68,18 +75,21 @@ def chat(request: ChatRequest, authorization: str = Header(None)):
         }
 
     except Exception as e:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except:
+            pass
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # -------------------------
-# CHAT HISTORY (OBLIGATORIO)
+# HISTORY
 # -------------------------
 @router.get("/chat/history/{game_id}")
 def get_chat_history(game_id: int, authorization: str = Header(None)):
 
     try:
-        # validar token (simple)
         get_user_id_from_token(authorization)
 
         cursor.execute(
@@ -94,19 +104,18 @@ def get_chat_history(game_id: int, authorization: str = Header(None)):
 
         rows = cursor.fetchall()
 
-        history = [
-            {
-                "message": r[0],
-                "response": r[1]
-            }
-            for r in rows
-        ]
-
         return {
             "game_id": game_id,
-            "history": history
+            "history": [
+                {"message": r[0], "response": r[1]}
+                for r in rows
+            ]
         }
 
     except Exception as e:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except:
+            pass
+
         raise HTTPException(status_code=500, detail=str(e))
