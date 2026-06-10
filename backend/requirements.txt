@@ -15,14 +15,7 @@ langchain-text-splitters
 langchain-groq
 langgraph
 
-chromadb
+chromadb==0.4.24
 
 pydantic
 typing-extensions
-
-sentence-transformers==2.2.2
-huggingface-hub
-transformers==4.36.2
-
-numpy<2
-scipy
