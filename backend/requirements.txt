@@ -1,22 +1,24 @@
 fastapi
 uvicorn[standard]
-python-dotenv
 
+python-dotenv
 psycopg2-binary
 
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt==4.0.1
 
-langchain==0.2.14
-langchain-community==0.2.12
+langchain
+langchain-community
+langchain-core
 langchain-groq
-
-langgraph==0.2.27
+langchain-huggingface
 
 chromadb==0.4.24
-sentence-transformers==2.2.2
+
+sentence-transformers==2.7.0
+
 numpy<2
 
-pydantic==2.7.4
+pydantic
 typing-extensions

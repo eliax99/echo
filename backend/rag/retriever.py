@@ -1,22 +1,20 @@
 import chromadb
-from langchain_huggingface import HuggingFaceEmbeddings
 
-# DB Chroma (OK en import porque es ligero)
-client = chromadb.PersistentClient(path="rag/chroma_db")
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    HuggingFaceEmbeddings = None
+
+
+client = chromadb.PersistentClient(path="backend/rag/chroma_db")
 collection = client.get_or_create_collection("echo_docs")
-
-# lazy loading de embeddings (CRÍTICO PARA RENDER)
-_embeddings = None
 
 
 def get_embeddings():
-    global _embeddings
-    if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"}
-        )
-    return _embeddings
+    if HuggingFaceEmbeddings is None:
+        raise ImportError("langchain-huggingface is not installed")
+
+    return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 
 def search_docs(query: str, k: int = 3):
