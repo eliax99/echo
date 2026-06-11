@@ -16,9 +16,9 @@ langchain-huggingface
 
 chromadb>=1.0,<2
 
-sentence-transformers==2.7.0
-
-numpy<2
+# >=3 publica wheels y soporta numpy 2; las versiones viejas (2.7.0 + numpy<2)
+# obligaban a compilar numpy desde código fuente en Python 3.13/3.14
+sentence-transformers>=3.0
 
 pydantic
 typing-extensions

@@ -164,7 +164,24 @@ Solo listaba `SECRET_KEY` y `GROQ_API_KEY`; faltaban `DATABASE_URL` (imprescindi
 
 **Arreglo:** completado con todas las variables y comentarios de ejemplo.
 
-### 14. Limpieza menor
+### 14. `numpy<2` y `sentence-transformers==2.7.0` no instalan en Python 3.13/3.14
+
+**Archivo:** `backend/requirements.txt`
+
+Detectado al hacer `npm run l` en otra máquina con Python 3.14: el pin `numpy<2`
+resuelve a `numpy 1.26.4`, que solo publica binarios hasta Python 3.12. En 3.13/3.14
+pip intenta compilar numpy desde el código fuente y falla si no hay compilador de C
+instalado (`ERROR: Unknown compiler(s): [['icl'], ['cl'], ['gcc']...]`). Lo mismo
+aplicaba a `sentence-transformers==2.7.0`, anterior a numpy 2.
+
+Ese pin era una protección para el `chromadb 0.4` antiguo; con chromadb 1.x (arreglo 9)
+ya no hace falta.
+
+**Arreglo:** eliminado `numpy<2` (numpy 2.x tiene binarios para Python 3.12–3.14) y
+relajado a `sentence-transformers>=3.0`. Verificado en local: la instalación actualiza
+numpy/sentence-transformers y el flujo completo (login + chat con RAG) sigue funcionando.
+
+### 15. Limpieza menor
 
 - `__pycache__/*.pyc` estaban versionados en git (el `.gitignore` ya los ignoraba, pero
   se subieron antes): sacados del índice con `git rm --cached`.
