@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database.db import conn, cursor
-from backend.models.user import create_user_table
-from backend.models.game import create_game_table
-from backend.models.chat import create_chat_table
+from database.db import conn, cursor
+from models.user import create_user_table
+from models.game import create_game_table
+from models.chat import create_chat_table
 
-from backend.routers import auth, chat
+from routers import auth, chat
 
 
 app = FastAPI(title="ECHO API")

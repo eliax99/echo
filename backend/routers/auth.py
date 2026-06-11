@@ -19,8 +19,8 @@ def register(user: UserRegister):
         hashed = hash_password(user.password)
 
         cursor.execute(
-            "INSERT INTO users (email, password) VALUES (%s, %s) RETURNING id",
-            (user.email, hashed)
+            "INSERT INTO users (email, username, password) VALUES (%s, %s, %s) RETURNING id",
+            (user.email, user.username, hashed)
         )
 
         user_id = cursor.fetchone()[0]
@@ -28,6 +28,9 @@ def register(user: UserRegister):
 
         return {"message": "User created successfully", "user_id": user_id}
 
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -70,6 +73,9 @@ def login(user: UserLogin):
             "game_id": game_id
         }
 
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))

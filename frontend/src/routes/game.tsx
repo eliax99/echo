@@ -50,6 +50,7 @@ function GameScreen() {
   const navigate = useNavigate();
   const {
     token,
+    gameId,
     addMessage,
     pushEvent,
     triggerShake,
@@ -165,7 +166,7 @@ function GameScreen() {
     let reply = "";
 
     try {
-      const res = await chatRequest(token, text);
+      const res = await chatRequest(token, text, gameId ?? 0);
       reply = res.response;
     } catch {
       const pool = FALLBACK_RESPONSES[phase as 1 | 2 | 3];

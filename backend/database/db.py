@@ -6,13 +6,12 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-conn = psycopg2.connect(
-    dbname="postgres",
-    user="postgres.usrcluwbupnhujdbimbg",
-    password="C8ZfdbSAIsB7LzPI",
-    host="aws-0-eu-west-1.pooler.supabase.com",
-    port="6543",
-    sslmode="require"
-)
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL no está definida. Copia backend/.env.example a backend/.env "
+        "y rellena la cadena de conexión de PostgreSQL."
+    )
+
+conn = psycopg2.connect(DATABASE_URL)
 
 cursor = conn.cursor()

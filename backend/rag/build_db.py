@@ -1,11 +1,14 @@
 import os
+from pathlib import Path
+
 import chromadb
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-DOCS_PATH = "rag/docs"
+BASE_DIR = Path(__file__).resolve().parent
+DOCS_PATH = str(BASE_DIR / "docs")
 
-client = chromadb.PersistentClient(path="rag/chroma_db")
+client = chromadb.PersistentClient(path=str(BASE_DIR / "chroma_db"))
 collection = client.get_or_create_collection("echo_docs")
 
 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")

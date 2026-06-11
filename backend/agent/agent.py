@@ -1,6 +1,4 @@
-from langgraph.graph import StateGraph
-
-from backend.rag.retriever import search_docs
+from rag.retriever import search_docs
 
 
 def run_agent(message: str, game_id: int):

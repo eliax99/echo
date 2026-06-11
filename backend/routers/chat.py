@@ -2,6 +2,7 @@ from fastapi import APIRouter, Header, HTTPException
 from schemas.chat import ChatRequest
 from database.db import cursor, conn
 from services.auth_service import jwt
+from core.config import SECRET_KEY, ALGORITHM
 from agent.agent import run_agent
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -19,12 +20,14 @@ def get_user_id_from_token(authorization: str):
 
         payload = jwt.decode(
             token,
-            "supersecretkey",
-            algorithms=["HS256"]
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
         )
 
         return payload["sub"]
 
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -74,10 +77,16 @@ def chat(request: ChatRequest, authorization: str = Header(None)):
             "game_id": game_id
         }
 
+    except HTTPException:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     except Exception as e:
         try:
             conn.rollback()
-        except:
+        except Exception:
             pass
 
         raise HTTPException(status_code=500, detail=str(e))
@@ -90,7 +99,15 @@ def chat(request: ChatRequest, authorization: str = Header(None)):
 def get_chat_history(game_id: int, authorization: str = Header(None)):
 
     try:
-        get_user_id_from_token(authorization)
+        user_id = get_user_id_from_token(authorization)
+
+        cursor.execute(
+            "SELECT id FROM games WHERE id = %s AND user_id = %s",
+            (game_id, user_id)
+        )
+
+        if not cursor.fetchone():
+            raise HTTPException(status_code=403, detail="Game does not belong to this user")
 
         cursor.execute(
             """
@@ -112,10 +129,16 @@ def get_chat_history(game_id: int, authorization: str = Header(None)):
             ]
         }
 
+    except HTTPException:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     except Exception as e:
         try:
             conn.rollback()
-        except:
+        except Exception:
             pass
 
         raise HTTPException(status_code=500, detail=str(e))

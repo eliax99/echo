@@ -1,4 +1,4 @@
-const BASE = "https://echo-e69p.onrender.com";
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export async function authRequest(
   path: "/auth/register" | "/auth/login",

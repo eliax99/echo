@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import chromadb
 
 try:
@@ -6,7 +8,9 @@ except ImportError:
     HuggingFaceEmbeddings = None
 
 
-client = chromadb.PersistentClient(path="backend/rag/chroma_db")
+CHROMA_PATH = str(Path(__file__).resolve().parent / "chroma_db")
+
+client = chromadb.PersistentClient(path=CHROMA_PATH)
 collection = client.get_or_create_collection("echo_docs")
 
 

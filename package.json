@@ -1,0 +1,8 @@
+{
+  "name": "elias-echo",
+  "private": true,
+  "scripts": {
+    "l": "node scripts/launch.mjs",
+    "launch": "node scripts/launch.mjs"
+  }
+}
