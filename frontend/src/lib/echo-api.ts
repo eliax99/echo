@@ -40,7 +40,10 @@ export async function chatRequest(
   message: string,
   game_id: number
 ): Promise<{ response: string; game_id: number }> {
-  const res = await fetch(`${BASE}/api/chat`, {
+  const url = `${BASE}/api/chat`;
+  console.log("[ECHO API] chatRequest →", url);
+
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -49,9 +52,12 @@ export async function chatRequest(
     body: JSON.stringify({ message, game_id }),
   });
 
+  console.log("[ECHO API] chatRequest status:", res.status);
+
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    console.error("[ECHO API] chatRequest error:", data);
     throw new Error(data?.detail || data?.message || `Chat failed (${res.status})`);
   }
 
