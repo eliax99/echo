@@ -1,0 +1,4 @@
+const tsrStartManifest = () => ({ routes: { __root__: { filePath: "C:/Users/elias/Documents/Bootcamp 2026/Proyecto Final/frontend/src/routes/__root.tsx", children: ["/", "/auth", "/game"], preloads: ["/assets/index-C6uguWop.js"], scripts: [{ attrs: { type: "module", async: true, src: "/assets/index-C6uguWop.js" } }] }, "/": { filePath: "C:/Users/elias/Documents/Bootcamp 2026/Proyecto Final/frontend/src/routes/index.tsx", children: void 0, preloads: ["/assets/index-DtqBFgK5.js"] }, "/auth": { filePath: "C:/Users/elias/Documents/Bootcamp 2026/Proyecto Final/frontend/src/routes/auth.tsx", children: void 0, preloads: ["/assets/auth-BlUlacmH.js", "/assets/echo-api-agfv0F4L.js"] }, "/game": { filePath: "C:/Users/elias/Documents/Bootcamp 2026/Proyecto Final/frontend/src/routes/game.tsx", children: void 0, preloads: ["/assets/game-B3CWcHDF.js", "/assets/echo-api-agfv0F4L.js"] } } });
+export {
+  tsrStartManifest
+};
