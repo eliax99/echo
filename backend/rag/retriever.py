@@ -1,63 +1,52 @@
 """
-RAG retriever using ChromaDB with default (onnx-based) embeddings.
-Much lighter than sentence-transformers — fits in Render's 512MB RAM.
+RAG retriever — lightweight keyword-based search across game documents.
+ChromaDB was too heavy for Render free tier (512MB RAM).
+This approach loads docs into memory once and searches by keyword overlap.
 """
 
 from pathlib import Path
-import chromadb
+import re
 
 DOCS_DIR = Path(__file__).resolve().parent / "docs"
-CHROMA_PATH = str(Path(__file__).resolve().parent / "chroma_db")
 
-# ChromaDB client with persistent storage
-_client = chromadb.PersistentClient(path=CHROMA_PATH)
-_collection = _client.get_or_create_collection("echo_docs")
+# Cache docs in memory (they're tiny — 5 files, ~10 lines total)
+_docs_cache: list[str] | None = None
 
 
-def _ensure_docs_indexed():
-    """Index all .txt docs into ChromaDB if not already present."""
-    if _collection.count() > 0:
-        return  # already indexed
-
-    if not DOCS_DIR.exists():
-        return
-
-    for file in sorted(DOCS_DIR.glob("*.txt")):
-        try:
-            text = file.read_text(encoding="utf-8").strip()
-            if not text:
-                continue
-            # Split into chunks of ~500 chars
-            chunks = []
-            for i in range(0, len(text), 500):
-                chunk = text[i : i + 500].strip()
-                if chunk:
-                    chunks.append(chunk)
-
-            for i, chunk in enumerate(chunks):
-                doc_id = f"{file.stem}_{i}"
-                _collection.add(
-                    ids=[doc_id],
-                    documents=[chunk],
-                    metadatas=[{"source": file.name}],
-                )
-            print(f"[RAG] Indexed {file.name}: {len(chunks)} chunks")
-        except Exception as e:
-            print(f"[RAG] Error indexing {file.name}: {e}")
-
-
-# Index on import
-_ensure_docs_indexed()
+def _load_docs() -> list[str]:
+    global _docs_cache
+    if _docs_cache is not None:
+        return _docs_cache
+    docs = []
+    if DOCS_DIR.exists():
+        for f in sorted(DOCS_DIR.glob("*.txt")):
+            try:
+                text = f.read_text(encoding="utf-8").strip()
+                if text:
+                    docs.append(text)
+            except Exception:
+                pass
+    _docs_cache = docs
+    return docs
 
 
 def search_docs(query: str, k: int = 3) -> list[str]:
-    """Search game documents using ChromaDB's default embeddings."""
+    """Search game docs by keyword overlap. Returns top-k relevant docs."""
     try:
-        if _collection.count() == 0:
+        docs = _load_docs()
+        if not docs:
             return []
-        results = _collection.query(query_texts=[query], n_results=k)
-        docs = results.get("documents", [[]])[0]
-        return docs
+
+        words = set(re.findall(r"[a-záéíóúüñ]+", query.lower()))
+        scored = []
+        for doc in docs:
+            doc_words = set(re.findall(r"[a-záéíóúüñ]+", doc.lower()))
+            score = len(words & doc_words)
+            if score > 0:
+                scored.append((score, doc))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [doc for _, doc in scored[:k]]
     except Exception as e:
         print(f"[search_docs] Error: {e}")
         return []

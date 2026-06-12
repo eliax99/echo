@@ -12,7 +12,5 @@ langchain-core
 langchain-groq
 langgraph
 
-chromadb
-
 pydantic
 typing-extensions
