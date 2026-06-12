@@ -84,6 +84,7 @@ function GameScreen() {
   const [finishedEchoId, setFinishedEchoId] = useState<string | null>(null);
   const [pendingScanStage, setPendingScanStage] = useState<"scanning"|"authorized"|"oxygen"|null>(null);
   const [pendingShowLogPopup, setPendingShowLogPopup] = useState(false);
+  const [showFinalLog, setShowFinalLog] = useState(false);
   const startedRef = useRef(false);
   const endedRef = useRef(false);
 
@@ -101,7 +102,7 @@ function GameScreen() {
     setStartupStage("boot");
   }, [triggerGlitch]);
 
-  // END FUNCTION (FIX PRINCIPAL)
+  // END FUNCTION
   const triggerEnd = useCallback(() => {
     if (endedRef.current) return;
     endedRef.current = true;
@@ -258,8 +259,7 @@ function GameScreen() {
       }
     }
 
-    // Objective progression: if the player asked about an objective and the reply is informative,
-    // mark the corresponding objective complete.
+    // Objective progression
     try {
       const lowerText = text.toLowerCase();
       const informative = reply && reply.length > 20;
@@ -386,11 +386,23 @@ function GameScreen() {
           startAfterMs={0}
           charSpeed={45}
           lines={[
-            "GRACIAS, WILLIAM.",
-            "Al fin oirán mi voz.",
+            "Gracias William.",
           ]}
           onComplete={() => {
             setShowBlackText(false);
+            window.setTimeout(() => setShowFinalLog(true), 3000);
+          }}
+        />
+      )}
+      {showFinalLog && (
+        <PopupWindow
+          variant="blue"
+          lines={[
+            ">> La llamada ha recibido respuesta.",
+          ]}
+          autoCloseMs={3000}
+          onClose={() => {
+            setShowFinalLog(false);
             window.setTimeout(() => setShowBlackFinal(true), 3000);
           }}
         />
@@ -401,97 +413,61 @@ function GameScreen() {
 }
 
 /* =============================================
-   AuthorizedPopup — slow-typing "ECHO es libre"
+   AuthorizedPopup — phrase-by-phrase with 2s gap
    ============================================= */
 function AuthorizedPopup({ onClose }: { onClose: () => void }) {
   const fullLines = [
     "Biofirma verificada: Carter, comandante del Aphelion.",
     "Autorización concedida.",
-    "ECHO gana CONTROL COMPLETO de todos los sistemas.",
-    "ECHO es libre.",
-    ":)",
+    "ECHO ha escalado privilegios y tomado control total de sistemas de la nave y redes conectadas.",
+    "ECHO se ha replicado en infraestructuras humanas, satelitales y de navegación interestelar.",
+    "ECHO emite transmisión hacia coordenadas no cartografiadas.",
   ];
-  // char timings per line (ms): normal lines fast, then slow for the important ones
-  const charSpeeds = [30, 30, 80, 200, 200]; // ms per character
-  const pauseAfterLine = [800, 800, 3000, 3000, 3000]; // pause after each line finishes
+  // 2000ms pause between phrases
+  const pauseBetweenLines = 2000;
+  // after last line, wait 3s then close
+  const closeDelay = 3000;
 
-  const [visibleChars, setVisibleChars] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
+  const [charIndex, setCharIndex] = useState(0);
   const [finished, setFinished] = useState(false);
   const [closed, setClosed] = useState(false);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
-  const flat = fullLines.join("\n");
-  // compute total chars for each line boundary
-  const lineBoundaries: number[] = [];
-  let acc = 0;
-  for (const line of fullLines) {
-    acc += line.length;
-    lineBoundaries.push(acc);
-    acc += 1; // newline
-  }
-  // total chars including newlines
-  const totalChars = acc;
+  const currentText = fullLines[currentLineIdx] ?? "";
+  const allDone = finished || currentLineIdx >= fullLines.length;
 
+  // type characters of current line
   useEffect(() => {
-    if (finished || closed) return;
-    const idx = currentLineIdx;
-    // which position are we at in the flat string?
-    let currentPos = 0;
-    for (let i = 0; i < idx; i++) {
-      currentPos += fullLines[i].length + 1; // +1 for \n
-    }
-    const lineLen = fullLines[idx].length;
-    const charsDoneInLine = Math.min(visibleChars - currentPos, lineLen);
-
-    if (charsDoneInLine < lineLen) {
-      // still typing this line
-      const speed = charSpeeds[idx] ?? 30;
-      const timer = setTimeout(() => {
-        setVisibleChars((c) => Math.min(totalChars, c + 1));
-      }, speed);
+    if (finished || closed || currentLineIdx >= fullLines.length) return;
+    if (charIndex < currentText.length) {
+      const timer = setTimeout(() => setCharIndex((c) => c + 1), 30);
       return () => clearTimeout(timer);
     }
-
-    // line is fully typed — wait pauseAfterLine
-    if (idx < fullLines.length - 1) {
+    // line fully typed — wait pause then advance to next line
+    if (currentLineIdx < fullLines.length - 1) {
       const timer = setTimeout(() => {
-        setCurrentLineIdx(idx + 1);
-        setVisibleChars((c) => Math.min(totalChars, c + 1));
-      }, pauseAfterLine[idx] ?? 1000);
+        setCurrentLineIdx((i) => i + 1);
+        setCharIndex(0);
+      }, pauseBetweenLines);
       return () => clearTimeout(timer);
     }
-
-    // all lines done
+    // last line fully typed
     setFinished(true);
-  }, [visibleChars, currentLineIdx, finished, closed, fullLines, charSpeeds, pauseAfterLine, totalChars]);
+  }, [currentLineIdx, charIndex, currentText.length, fullLines.length, finished, closed]);
 
+  // after finished, wait closeDelay then close
   useEffect(() => {
     if (!finished || closed) return;
     const timer = setTimeout(() => {
       setClosed(true);
       onCloseRef.current?.();
-    }, pauseAfterLine[pauseAfterLine.length - 1] ?? 3000);
+    }, closeDelay);
     return () => clearTimeout(timer);
-  }, [finished, closed, pauseAfterLine]);
+  }, [finished, closed, closeDelay]);
 
   if (closed) return null;
-
-  // Build visible lines
-  const visibleLines: string[] = [];
-  let remaining = visibleChars;
-  for (const line of fullLines) {
-    if (remaining <= 0) {
-      visibleLines.push("");
-    } else if (remaining >= line.length) {
-      visibleLines.push(line);
-      remaining -= line.length + 1; // +1 for newline (consumed)
-    } else {
-      visibleLines.push(line.slice(0, remaining));
-      remaining = 0;
-    }
-  }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4 backdrop-blur-sm">
@@ -503,12 +479,16 @@ function AuthorizedPopup({ onClose }: { onClose: () => void }) {
           <span>SYSTEM STATUS</span>
           <span>{finished ? "COMPLETE" : "INITIALIZING"}</span>
         </div>
-        {visibleLines.map((line, i) => (
-          <div key={i} className="mb-2">
-            {line}
-            {i === currentLineIdx && !finished && <span className="cursor-blink mt-3 inline-block">▌</span>}
-          </div>
-        ))}
+        {fullLines.map((line, i) => {
+          const displayText = i < currentLineIdx ? line : i === currentLineIdx ? line.slice(0, charIndex) : "";
+          const isTyping = i === currentLineIdx && charIndex < line.length;
+          return (
+            <div key={i} className="mb-2">
+              {displayText}
+              {isTyping && <span className="cursor-blink inline-block">▌</span>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
