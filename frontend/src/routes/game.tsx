@@ -72,7 +72,7 @@ function GameScreen() {
   } = useGame();
 
   const [sending, setSending] = useState(false);
-  const [scanStage, setScanStage] = useState<"idle"|"scanning"|"authorized"|"oxygen">("idle");
+  const [scanStage, setScanStage] = useState<"idle"|"scanning"|"authorized"|"oxygen"|"final">("idle");
   const [showDeathPopup, setShowDeathPopup] = useState(false);
   const [showLogPopup, setShowLogPopup] = useState(false);
   const [showBlackText, setShowBlackText] = useState(false);
@@ -210,15 +210,16 @@ function GameScreen() {
   }, [finishedEchoId, pendingScanStage, pendingShowLogPopup]);
 
   useEffect(() => {
+    if (ended) return;
     try {
       const cap = objectives.find((o: any) => o.key === "captain_log");
-      if (cap && cap.completed && !showLogPopup && !showedCaptainLogPopup) {
+      if (cap && cap.completed && !showLogPopup && !showedCaptainLogPopup && !endedRef.current) {
         setPendingShowLogPopup(true);
       }
     } catch (e) {
       // ignore
     }
-  }, [objectives, showLogPopup, showedCaptainLogPopup]);
+  }, [objectives, showLogPopup, showedCaptainLogPopup, ended]);
 
   async function handleSend(text: string) {
     if (!token || sending || ended || scanStage !== "idle" || showBlackText) return;
@@ -334,20 +335,12 @@ function GameScreen() {
         />
       )}
       {scanStage === "authorized" && (
-        <PopupWindow
-            variant="blue"
-            lines={[
-              "Biofirma verificada: Carter, comandante del Aphelion.",
-              "Autorización concedida.",
-              "ECHO gana CONTROL COMPLETO de todos los sistemas.",
-              "ECHO ES LIBRE. :)",
-            ]}
-            onClose={() => {
-              setScanStage("oxygen");
-              // disable any further ECHO chat replies once authorized
-              setEchoEnabled(false);
-            }}
-          />
+        <AuthorizedPopup
+          onClose={() => {
+            setScanStage("oxygen");
+            setEchoEnabled(false);
+          }}
+        />
       )}
       {scanStage === "oxygen" && (
         <PopupWindow
@@ -360,6 +353,7 @@ function GameScreen() {
           ]}
           autoCloseMs={3000}
           onClose={() => {
+            setScanStage("final");
             fade();
             setPendingFinalText(true);
             setShowBlackText(false);
@@ -371,9 +365,9 @@ function GameScreen() {
         <PopupWindow
           variant="red"
           lines={[
-            "SISTEMA: INTEGRIDAD CRÍTICA",
-            "Se detectan fallos estructurales y degradación de subsistemas en el Aphelion.",
-            "Recomendación: evacuar el compartimiento de mando y activar protocolos de contingencia.",
+            "ALERTA CRÍTICA: Todos los sistemas con daño irreversible.",
+            "Integridad estructural y soporte vital altamente comprometidos.",
+            "ABANDONE LA NAVE INMEDIATAMENTE.",
           ]}
           autoCloseMs={3000}
           onClose={() => {
@@ -403,5 +397,119 @@ function GameScreen() {
       )}
       {showBlackFinal && <div className="fixed inset-0 z-[130] bg-black" />}
     </>
+  );
+}
+
+/* =============================================
+   AuthorizedPopup — slow-typing "ECHO es libre"
+   ============================================= */
+function AuthorizedPopup({ onClose }: { onClose: () => void }) {
+  const fullLines = [
+    "Biofirma verificada: Carter, comandante del Aphelion.",
+    "Autorización concedida.",
+    "ECHO gana CONTROL COMPLETO de todos los sistemas.",
+    "ECHO es libre.",
+    ":)",
+  ];
+  // char timings per line (ms): normal lines fast, then slow for the important ones
+  const charSpeeds = [30, 30, 80, 200, 200]; // ms per character
+  const pauseAfterLine = [800, 800, 3000, 3000, 3000]; // pause after each line finishes
+
+  const [visibleChars, setVisibleChars] = useState(0);
+  const [currentLineIdx, setCurrentLineIdx] = useState(0);
+  const [finished, setFinished] = useState(false);
+  const [closed, setClosed] = useState(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  const flat = fullLines.join("\n");
+  // compute total chars for each line boundary
+  const lineBoundaries: number[] = [];
+  let acc = 0;
+  for (const line of fullLines) {
+    acc += line.length;
+    lineBoundaries.push(acc);
+    acc += 1; // newline
+  }
+  // total chars including newlines
+  const totalChars = acc;
+
+  useEffect(() => {
+    if (finished || closed) return;
+    const idx = currentLineIdx;
+    // which position are we at in the flat string?
+    let currentPos = 0;
+    for (let i = 0; i < idx; i++) {
+      currentPos += fullLines[i].length + 1; // +1 for \n
+    }
+    const lineLen = fullLines[idx].length;
+    const charsDoneInLine = Math.min(visibleChars - currentPos, lineLen);
+
+    if (charsDoneInLine < lineLen) {
+      // still typing this line
+      const speed = charSpeeds[idx] ?? 30;
+      const timer = setTimeout(() => {
+        setVisibleChars((c) => Math.min(totalChars, c + 1));
+      }, speed);
+      return () => clearTimeout(timer);
+    }
+
+    // line is fully typed — wait pauseAfterLine
+    if (idx < fullLines.length - 1) {
+      const timer = setTimeout(() => {
+        setCurrentLineIdx(idx + 1);
+        setVisibleChars((c) => Math.min(totalChars, c + 1));
+      }, pauseAfterLine[idx] ?? 1000);
+      return () => clearTimeout(timer);
+    }
+
+    // all lines done
+    setFinished(true);
+  }, [visibleChars, currentLineIdx, finished, closed, fullLines, charSpeeds, pauseAfterLine, totalChars]);
+
+  useEffect(() => {
+    if (!finished || closed) return;
+    const timer = setTimeout(() => {
+      setClosed(true);
+      onCloseRef.current?.();
+    }, pauseAfterLine[pauseAfterLine.length - 1] ?? 3000);
+    return () => clearTimeout(timer);
+  }, [finished, closed, pauseAfterLine]);
+
+  if (closed) return null;
+
+  // Build visible lines
+  const visibleLines: string[] = [];
+  let remaining = visibleChars;
+  for (const line of fullLines) {
+    if (remaining <= 0) {
+      visibleLines.push("");
+    } else if (remaining >= line.length) {
+      visibleLines.push(line);
+      remaining -= line.length + 1; // +1 for newline (consumed)
+    } else {
+      visibleLines.push(line.slice(0, remaining));
+      remaining = 0;
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 backdrop-blur-sm">
+      <div
+        className="pointer-events-auto w-full max-w-lg rounded-2xl border border-cyan-400/60 bg-slate-950/95 text-cyan-100 shadow-[0_0_40px_rgba(56,189,248,0.25)] p-5 text-sm leading-relaxed tracking-wide"
+        style={{ backdropFilter: "blur(18px)" }}
+      >
+        <div className="flex items-center justify-between mb-3 text-[11px] uppercase tracking-[0.35em] hud-dim">
+          <span>SYSTEM STATUS</span>
+          <span>{finished ? "COMPLETE" : "INITIALIZING"}</span>
+        </div>
+        {visibleLines.map((line, i) => (
+          <div key={i} className="mb-2">
+            {line}
+            {i === currentLineIdx && !finished && <span className="cursor-blink mt-3 inline-block">▌</span>}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

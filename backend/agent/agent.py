@@ -116,8 +116,11 @@ def _generate_response(message: str, docs: List[str], history_rows: List[Tuple[s
             "No puedo preparar la cápsula de escape. Requiere su autorización, Comandante"
         )
 
-    if re.search(r"\b(autorizo(?:\s+escaneo)?|autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo|yo soy william carter|soy william carter|mi nombre es william carter|mi nombre es comandante william carter|comandante william carter|william carter|soy comandante|identif|identificate|identifícate)\b", normalized):
-            return ""
+    if re.search(r"\b(autorizo(?:\s+escaneo)?|autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo)\b", normalized):
+        return (
+            "Autorización recibida. ECHO SYSTEM NOTICE: Iniciando escaneo biométrico completo. "
+            "Permanezca inmóvil mientras verificamos su identidad."
+        )
 
     if re.search(r"\b(identifícate|identificate|comandante\s+william\s+carter|william\s+carter|comandante\s+[a-z]+|comandante\s+[a-z]+\s+[a-z]+)\b", normalized):
         return (
