@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const popupStyles: Record<string, string> = {
-  blue: "border-sky-400 bg-sky-950/90 text-sky-200 shadow-[0_0_40px_rgba(56,189,248,0.25)]",
-  red: "border-red-500 bg-[#3b0000]/95 text-red-200 shadow-[0_0_60px_rgba(220,38,38,0.35)]",
+  blue: "border border-cyan-400/60 bg-slate-950/95 text-cyan-100 shadow-[0_0_40px_rgba(56,189,248,0.25)]",
+  red: "border border-red-500/80 bg-[#2a0000]/95 text-rose-100 shadow-[0_0_70px_rgba(220,38,38,0.35)]",
 };
 
 type PopupWindowProps = {
@@ -14,12 +14,17 @@ type PopupWindowProps = {
   onClose?: () => void;
 };
 
-export function PopupWindow({ lines, variant = "blue", autoCloseMs = 2000, onClose }: PopupWindowProps) {
+export function PopupWindow({ lines, variant = "blue", autoCloseMs = 3000, onClose }: PopupWindowProps) {
   const fullText = useMemo(() => lines.join("\n"), [lines]);
   const [charIndex, setCharIndex] = useState(0);
   const visibleText = fullText.slice(0, charIndex);
   const displayLines = visibleText.split("\n");
   const finished = charIndex >= fullText.length;
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (finished) return;
@@ -32,20 +37,34 @@ export function PopupWindow({ lines, variant = "blue", autoCloseMs = 2000, onClo
   useEffect(() => {
     if (!finished) return;
     const closeTimer = window.setTimeout(() => {
-      onClose?.();
+      onCloseRef.current?.();
     }, autoCloseMs);
     return () => window.clearTimeout(closeTimer);
-  }, [finished, onClose, autoCloseMs]);
+  }, [finished, autoCloseMs]);
+
+  useEffect(() => {
+    const fallbackTimer = window.setTimeout(() => {
+      onCloseRef.current?.();
+    }, fullText.length * 30 + autoCloseMs + 200);
+    return () => window.clearTimeout(fallbackTimer);
+  }, [fullText, autoCloseMs]);
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4">
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 backdrop-blur-sm">
       <div
-        className={`pointer-events-auto w-full max-w-md rounded-md border p-4 text-sm leading-relaxed ${popupStyles[variant]}`}
+        className={`pointer-events-auto w-full max-w-lg rounded-2xl border p-5 text-sm leading-relaxed tracking-wide ${popupStyles[variant]}`}
+        style={{ backdropFilter: "blur(18px)" }}
       >
+        <div className="flex items-center justify-between mb-3 text-[11px] uppercase tracking-[0.35em] hud-dim">
+          <span>{variant === "red" ? "CRITICAL ALERT" : "SYSTEM STATUS"}</span>
+          <span>{finished ? "COMPLETE" : "INITIALIZING"}</span>
+        </div>
         {displayLines.map((line, index) => (
-          <div key={index}>{line}</div>
+          <div key={index} className="mb-2">
+            {line}
+          </div>
         ))}
-        {!finished && <span className="cursor-blink">▌</span>}
+        {!finished && <span className="cursor-blink mt-3 inline-block">▌</span>}
       </div>
     </div>
   );
@@ -107,22 +126,25 @@ export function BlackScreenTextOverlay({
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] bg-black grid place-items-center px-6">
-      <div className="text-center space-y-4 text-lg font-mono hud-text text-sky-100">
-        {lines.map((line, index) => {
-          const content =
-            index < currentLine
-              ? line
-              : index === currentLine
-              ? line.slice(0, charIndex)
-              : "";
-          return (
-            <div key={index}>
-              {content}
-              {index === currentLine && charIndex < line.length ? <span className="cursor-blink">▌</span> : null}
-            </div>
-          );
-        })}
+    <div className="fixed inset-0 z-[120] bg-black/95 grid place-items-center px-6">
+      <div className="relative max-w-3xl rounded-3xl border border-sky-500/20 bg-[#02080f]/90 p-8 shadow-[0_0_60px_rgba(14,181,255,0.24)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.2),_transparent_35%)] pointer-events-none" />
+        <div className="relative text-center space-y-5 text-lg sm:text-xl font-semibold tracking-[0.22em] hud-text text-sky-100">
+          {lines.map((line, index) => {
+            const content =
+              index < currentLine
+                ? line
+                : index === currentLine
+                ? line.slice(0, charIndex)
+                : "";
+            return (
+              <div key={index} className="leading-snug">
+                {content}
+                {index === currentLine && charIndex < line.length ? <span className="cursor-blink">▌</span> : null}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

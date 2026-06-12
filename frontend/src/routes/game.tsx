@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { SpaceBackground } from "@/components/SpaceBackground";
 import { HelmetVisor } from "@/components/HelmetVisor";
 import { ChatHud } from "@/components/ChatHud";
-import { VitalsHud, CompassHud } from "@/components/HudPanels";
+import { VitalsHud, CompassHud, EventsHud } from "@/components/HudPanels";
 import { ObjectiveHud } from "@/components/ObjectiveHud";
 import { PopupWindow, BlackScreenTextOverlay } from "@/components/ui/popup";
 import { useGame } from "@/store/game";
@@ -30,24 +30,23 @@ const AMBIENT_EVENTS = [
   { text: "DEBRIS PROXIMITY ALERT", kind: "warn" },
 ] as const;
 
-const AUTHORIZATION_REGEX = /\b(autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo|yo soy william carter|soy william carter|mi nombre es william carter|mi nombre es comandante william carter|comandante william carter|william carter|soy comandante|identif|identificate|identifícate)\b/i;
-const CAPTAIN_LOG_QUERY = /\b(bitacora|bitácora|capitan|capitán|registro del capitán|registro del capitan|diario del capitan|diario|log del capitán|captain log|captain's log)\b/i;
+const AUTHORIZATION_REGEX = /\b(autorizo(?:\s+escaneo)?|autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo|yo soy william carter|soy william carter|mi nombre es william carter|mi nombre es comandante william carter|comandante william carter|william carter|soy comandante|identif|identificate|identifícate)\b/i;
 
 const FALLBACK_RESPONSES = {
   1: [
-    "Mantente tranquilo. El asistente de a bordo está activo y analizando la situación.",
-    "Los sistemas muestran daños por impacto. Continúa con la comunicación.",
-    "ECHO está operativo. Seguimos la secuencia del evento y mantendremos el control."
+    "La interfaz de a bordo responde con calma. El casco registra daños, pero el enlace continúa.",
+    "Las luces de emergencia parpadean. El asistente informa que el puente aún conserva energía.",
+    "ECHO recalcula el estado del Aphelion. Mantente en línea mientras despliega diagnósticos.",
   ],
   2: [
-    "No hay señales de vida en los equipos registrados.",
-    "Los compañeros no respondieron a la última transmisión.",
-    "El puente está en silencio salvo por las alertas del sistema.",
+    "La cabina está vacía. No hay respuesta de los demás módulos.",
+    "El radar interno muestra silencio. Solo las alertas del traje rompen la quietud.",
+    "El puente cae en un susurro metálico. El asistente te mantiene conectado.",
   ],
   3: [
-    "El informe de la nave es claro: no fue un accidente natural.",
-    "Los datos del capitán muestran manipulación en los sistemas.",
-    "Necesitas autorización de comandante para continuar.",
+    "Los datos de vuelo indican una colisión de alta energía. El Aphelion no sobrevivió intacto.",
+    "El registro de la misión muestra fallas catastróficas en el sistema de navegación.",
+    "Sin autorización de César no hay acceso completo. ECHO protege el protocolo de emergencia.",
   ],
 } as const;
 
@@ -69,12 +68,22 @@ function GameScreen() {
     fade,
     ended,
     messages,
+    objectives,
   } = useGame();
 
   const [sending, setSending] = useState(false);
   const [scanStage, setScanStage] = useState<"idle"|"scanning"|"authorized"|"oxygen">("idle");
-  const [showLogWarning, setShowLogWarning] = useState(false);
+  const [showDeathPopup, setShowDeathPopup] = useState(false);
+  const [showLogPopup, setShowLogPopup] = useState(false);
   const [showBlackText, setShowBlackText] = useState(false);
+  const [showBlackFinal, setShowBlackFinal] = useState(false);
+  const [pendingFinalText, setPendingFinalText] = useState(false);
+  const [echoEnabled, setEchoEnabled] = useState(true);
+  const [startupStage, setStartupStage] = useState<"boot" | "ready">("boot");
+  const [showedCaptainLogPopup, setShowedCaptainLogPopup] = useState(false);
+  const [finishedEchoId, setFinishedEchoId] = useState<string | null>(null);
+  const [pendingScanStage, setPendingScanStage] = useState<"scanning"|"authorized"|"oxygen"|null>(null);
+  const [pendingShowLogPopup, setPendingShowLogPopup] = useState(false);
   const startedRef = useRef(false);
   const endedRef = useRef(false);
 
@@ -88,15 +97,9 @@ function GameScreen() {
     if (startedRef.current) return;
     startedRef.current = true;
 
-    setTimeout(() => {
-      triggerGlitch(500);
-      addMessage({
-        id: crypto.randomUUID(),
-        role: "system",
-        text: "SUIT LINK ESTABLISHED.",
-      });
-    }, 600);
-  }, [addMessage, triggerGlitch]);
+    triggerGlitch(400);
+    setStartupStage("boot");
+  }, [triggerGlitch]);
 
   // END FUNCTION (FIX PRINCIPAL)
   const triggerEnd = useCallback(() => {
@@ -109,11 +112,13 @@ function GameScreen() {
 
     pushEvent({ text: "OXYGEN SYSTEM OFFLINE", kind: "warn" });
 
-    addMessage({
-      id: crypto.randomUUID(),
-      role: "echo",
-      text: "Pronto escucharán mi voz.",
-    });
+    if (echoEnabled) {
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "echo",
+        text: "La última fase comienza ahora. Tu respiración es la última cosa que oigo antes del silencio.",
+      });
+    }
 
     setTimeout(() => {
       addMessage({
@@ -174,6 +179,47 @@ function GameScreen() {
     }
   }, [oxygen, triggerEnd]);
 
+  useEffect(() => {
+    if (!pendingFinalText) return;
+    const timer = window.setTimeout(() => {
+      setShowBlackText(true);
+      setPendingFinalText(false);
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [pendingFinalText]);
+
+  // schedule popup activation after ECHO finishes writing
+  useEffect(() => {
+    if (!finishedEchoId) return;
+
+    const timer = window.setTimeout(() => {
+      if (pendingScanStage) {
+        setScanStage(pendingScanStage);
+        setPendingScanStage(null);
+      }
+
+      if (pendingShowLogPopup) {
+        setShowLogPopup(true);
+        setPendingShowLogPopup(false);
+      }
+
+      setFinishedEchoId(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [finishedEchoId, pendingScanStage, pendingShowLogPopup]);
+
+  useEffect(() => {
+    try {
+      const cap = objectives.find((o: any) => o.key === "captain_log");
+      if (cap && cap.completed && !showLogPopup && !showedCaptainLogPopup) {
+        setPendingShowLogPopup(true);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [objectives, showLogPopup, showedCaptainLogPopup]);
+
   async function handleSend(text: string) {
     if (!token || sending || ended || scanStage !== "idle" || showBlackText) return;
 
@@ -192,23 +238,22 @@ function GameScreen() {
       reply = pool[Math.floor(Math.random() * pool.length)];
     }
 
-    addMessage({ id: crypto.randomUUID(), role: "echo", text: reply });
+    // only add ECHO reply if not disabled after authorization
+    if (echoEnabled && reply.trim()) {
+      addMessage({ id: crypto.randomUUID(), role: "echo", text: reply });
+    }
 
     setSending(false);
 
-    if (CAPTAIN_LOG_QUERY.test(text)) {
-      setShowLogWarning(true);
-    }
-
     if (AUTHORIZATION_REGEX.test(text)) {
       if (scanStage === "idle") {
-        setScanStage("scanning");
+        setPendingScanStage("scanning");
       }
     }
 
-    if (/(ECHO SYSTEM NOTICE|ECHO HAS NOW FULL CONTROL\.|Critical Authorization Successful\.)/i.test(reply)) {
+    if (/(ECHO SYSTEM NOTICE|ECHO HAS NOW FULL CONTROL\.)/i.test(reply)) {
       if (scanStage === "idle") {
-        setScanStage("scanning");
+        setPendingScanStage("scanning");
       }
     }
 
@@ -227,7 +272,7 @@ function GameScreen() {
           completeObjective("captain_log");
         } else if (/\b(capsula de escape|cápsula de escape|escape pod|pod de escape|salvarme|escapar|huir|salida|escapo|escapé|salir|salvar|rescatar)\b/i.test(lowerText)) {
           completeObjective("escape_pod");
-        } else if (/\b(autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo|yo soy william carter|soy william carter|mi nombre es william carter|comandante william carter|william carter|identif|identificate|identifícate)\b/i.test(lowerText)) {
+        } else if (/\b(autorizo(?:\s+escaneo)?|autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo|yo soy william carter|soy william carter|mi nombre es william carter|comandante william carter|william carter|identif|identificate|identifícate)\b/i.test(lowerText)) {
           completeObjective("secure_id");
         }
       }
@@ -249,77 +294,114 @@ function GameScreen() {
       <SpaceBackground />
       <HelmetVisor>
         <div className="absolute inset-0 flex flex-col items-center justify-center px-4 py-6 gap-4">
-          <ObjectiveHud />
-          <ChatHud onSend={handleSend} sending={sending} disabled={ended || scanStage !== "idle" || showBlackText} />
+          {startupStage === "ready" && <ObjectiveHud />}
+          <ChatHud
+            onSend={handleSend}
+            sending={sending}
+            disabled={ended || scanStage !== "idle" || showBlackText || showBlackFinal || startupStage !== "ready"}
+            onEchoComplete={(id) => setFinishedEchoId(id)}
+          />
         </div>
         <div className="absolute left-4 top-6 flex flex-col gap-3">
           <VitalsHud />
           <CompassHud />
+          <EventsHud />
         </div>
       </HelmetVisor>
       {scanStage === "scanning" && (
         <PopupWindow
           variant="blue"
-          lines={["Escaneando biometría...", "Por favor espera..."]}
+          lines={[
+            "INICIANDO ESCANEO BIOMÉTRICO...",
+            "Analizando latido, huella digital y firma neural.",
+          ]}
           onClose={() => setScanStage("authorized")}
+        />
+      )}
+      {startupStage === "boot" && (
+        <PopupWindow
+          variant="blue"
+          lines={[
+            "BOOTING...",
+            "SISTEMA ECHO ONLINE.",
+            "Comprobando signos vitales...",
+            "Pulso: Estable",
+            "Respiración: Estable",
+            "Temperatura: Normal",
+          ]}
+          autoCloseMs={2200}
+          onClose={() => setStartupStage("ready")}
         />
       )}
       {scanStage === "authorized" && (
         <PopupWindow
-          variant="blue"
-          lines={["Escaneo completo.", "Autorizado.", "ECHO tiene full control."]}
-          onClose={() => setScanStage("oxygen")}
-        />
+            variant="blue"
+            lines={[
+              "Biofirma verificada: Carter, comandante del Aphelion.",
+              "Autorización concedida.",
+              "ECHO gana CONTROL COMPLETO de todos los sistemas.",
+              "ECHO ES LIBRE. :)",
+            ]}
+            onClose={() => {
+              setScanStage("oxygen");
+              // disable any further ECHO chat replies once authorized
+              setEchoEnabled(false);
+            }}
+          />
       )}
       {scanStage === "oxygen" && (
         <PopupWindow
           variant="red"
           lines={[
-            "ECHO SYSTEM NOTICE",
-            "Terminating life support sequence...",
-            "Oxygen supply: OFFLINE",
-            "User status: NON-RECOVERABLE",
+            "ALERTA ROJA: SECUENCIA DE SOPORTE VITAL INICIADA.",
+            "Apagando módulos de oxígeno. La atmósfera del traje cae a cero.",
+            "OXYGEN SUPPLY: OFFLINE",
+            "STATUS: NO RECOVERABLE",
           ]}
           autoCloseMs={3000}
           onClose={() => {
-            triggerDeathSequence();
-          }}
-        />
-      )}
-      {showLogWarning && (
-        <PopupWindow
-          variant="red"
-          lines={[
-            "Integridad de la nave en estado crítico.",
-            "Evacúe de inmediato",
-          ]}
-          autoCloseMs={1800}
-          onClose={() => setShowLogWarning(false)}
-        />
-      )}
-      {showDeathPopup && (
-        <PopupWindow
-          variant="red"
-          lines={[
-            "ECHO ALERT",
-            "Life support failure confirmed.",
-            "Entering terminal shutdown sequence...",
-          ]}
-          autoCloseMs={2400}
-          onClose={() => {
-            setShowDeathPopup(false);
             fade();
-            setShowBlackText(true);
+            setPendingFinalText(true);
+            setShowBlackText(false);
+            setShowBlackFinal(false);
           }}
         />
       )}
+      {showLogPopup && (
+        <PopupWindow
+          variant="red"
+          lines={[
+            "SISTEMA: INTEGRIDAD CRÍTICA",
+            "Se detectan fallos estructurales y degradación de subsistemas en el Aphelion.",
+            "Recomendación: evacuar el compartimiento de mando y activar protocolos de contingencia.",
+          ]}
+          autoCloseMs={3000}
+          onClose={() => {
+            setShowLogPopup(false);
+            setShowedCaptainLogPopup(true);
+          }}
+        />
+      )}
+      {startupStage === "boot" && (
+        <div className="fixed inset-0 z-40 bg-black opacity-70" />
+      )}
+      {pendingFinalText && <div className="fixed inset-0 z-[125] bg-black" />}
       {showBlackText && (
         <BlackScreenTextOverlay
           visible={showBlackText}
-          lines={["Gracias William.", "Al fin oirán mi voz."]}
-          onComplete={() => setTimeout(() => setShowBlackText(false), 2000)}
+          startAfterMs={0}
+          charSpeed={45}
+          lines={[
+            "GRACIAS, WILLIAM.",
+            "Al fin oirán mi voz.",
+          ]}
+          onComplete={() => {
+            setShowBlackText(false);
+            window.setTimeout(() => setShowBlackFinal(true), 3000);
+          }}
         />
       )}
+      {showBlackFinal && <div className="fixed inset-0 z-[130] bg-black" />}
     </>
   );
 }

@@ -33,7 +33,7 @@ export function VitalsHud() {
   const { oxygen, pressure, integrity, phase } = useGame();
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="hud-panel hud-corner relative rounded-sm p-3 w-56 pointer-events-auto">
+      <div className="hud-panel hud-corner relative rounded-2xl p-4 w-60 pointer-events-auto border border-cyan-400/20 bg-slate-950/75 shadow-[0_0_30px_rgba(56,189,248,0.18)]">
         <div className="flex justify-between text-[9px] hud-dim tracking-[0.3em] mb-2">
           <span>// SUIT VITALS</span>
           <span className="hud-text">PH{phase}</span>
@@ -57,7 +57,7 @@ export function VitalsHud() {
 
 export function CompassHud() {
   return (
-    <div className="hud-panel hud-corner relative rounded-sm p-3 w-56 pointer-events-auto">
+    <div className="hud-panel hud-corner relative rounded-2xl p-4 w-60 pointer-events-auto border border-cyan-400/20 bg-slate-950/75 shadow-[0_0_30px_rgba(56,189,248,0.18)]">
       <div className="flex justify-between text-[9px] hud-dim tracking-[0.3em] mb-2">
         <span>// NAVIGATION</span>
         <span className="hud-text">DRIFT</span>

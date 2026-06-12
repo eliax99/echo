@@ -52,10 +52,10 @@ export const useGame = create<GameState>((set, get) => ({
   objectives: [
     { key: "discover", title: "descubre qué ocurrió", completed: false },
     { key: "search_team", title: "busca a tus compañeros", completed: false },
-    { key: "captain_log", title: "investiga la bitácora del capitán", completed: false },
+    { key: "captain_log", title: "consulta la bitácora del Capitán Hayes", completed: false },
     { key: "escape_pod", title: "llega hasta la cápsula de escape", completed: false },
     { key: "secure_id", title: "AUTENTICACIÓN DE NIVEL CRÍTICO: requerido escaneo biométrico completo del Comandante William Carter. ¿AUTORIZA?", completed: false },
-    { key: "final_notice", title: "Al fin me oirán.", completed: false },
+    { key: "final_notice", title: "---", completed: false },
   ],
   events: [],
   phase: 1,

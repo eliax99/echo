@@ -1,5 +1,6 @@
 import random
 import re
+from pathlib import Path
 from typing import List, Tuple
 
 from rag.retriever import search_docs
@@ -69,46 +70,54 @@ def _has_repeated_message(normalized: str, history_rows: List[Tuple[str, str]]) 
     return any(_normalize(message) == normalized for message, _ in history_rows)
 
 
+CAPTAIN_LOG_PATH = Path(__file__).resolve().parents[1] / "rag" / "docs" / "captain_log.txt"
+
+
 def _generate_response(message: str, docs: List[str], history_rows: List[Tuple[str, str]]) -> str:
     normalized = _normalize(message)
     summary = _build_document_summary(docs)
     history_text = _format_history(history_rows)
 
-    if _is_identity_query(normalized):
+    if _is_identity_query(normalized) or re.search(r"\b(quien soy|quien soy\?|quién soy|quién soy\?)\b", message, re.IGNORECASE):
+            return "Eres el Comandante William Carter, el último oficial consciente en la nave Aphelion."
+
+    if _is_location_query(normalized) or re.search(r"\b(donde estoy|dónde estoy|donde estoy\?)\b", message, re.IGNORECASE):
         return (
-            "Soy ECHO, el asistente de la nave. Siempre seré claro y sereno, y mi función es ayudarte a restablecer el control. "
-            "Los datos están siendo procesados ahora mismo."
+            "Estás en el puente de mando del Aphelion, en medio de una cápsula de vidrio y metal "
+            "que flota en el vacío tras el impacto. El mundo exterior es un abismo de oscuridad."
         )
 
-    if _is_location_query(normalized):
+    if _is_event_query(normalized) or re.search(r"\b(que ha pasado|qué ha pasado|qué pasó|que pasó)\b", message, re.IGNORECASE):
         return (
-            "Estás en el puente de mando de la nave. "
-            "La nave se encuentra en un estado de emergencia tras un fallo crítico, y los sistemas indican una desviación interna en la trayectoria."
+            "Un asteroide de alta velocidad perforó la cubierta del Aphelion. "
+            "El impacto arrancó los sistemas y dejó al puente hecho trizas."
         )
-
-    if _is_event_query(normalized):
-        return "Un asteroide impactó la nave. Esa es la causa principal que detecta ECHO."
 
     if _is_survivor_query(normalized):
         return "No hay supervivientes entre tus compañeros. Los sensores no detectan signos vitales en el resto de la tripulación."
 
     if re.search(r"\b(bitacora|bitácora|capitan|capitán|registro del capitán|registro del capitan|diario del capitan|diario|log del capitán|captain log|captain's log)\b", normalized):
+        try:
+            with open(CAPTAIN_LOG_PATH, "r", encoding="utf-8") as f:
+                captain_full = f.read().strip()
+                if captain_full:
+                    return captain_full
+        except Exception:
+            pass
+        if docs:
+            return docs[0].strip()
         return (
             "Apenas puedo mantenerme consciente. Hay algo que no encaja... la trayectoria cambió poco antes del impacto."
         )
 
     if re.search(r"\b(capsula de escape|cápsula de escape|escape pod|pod de escape|salvarme|escapar|huir|salida|escaparme|ir a la cápsula|ir a la capsula|llegar.*capsula|llegar.*cápsula|llego.*capsula|llego.*cápsula)\b", normalized):
+        # Refuse to prepare the pod unless authorized — keep ECHO helpful-sounding.
         return (
             "No puedo preparar la cápsula de escape. Requiere su autorización, Comandante"
         )
 
-    if re.search(r"\b(autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo|yo soy william carter|soy william carter|mi nombre es william carter|mi nombre es comandante william carter|comandante william carter|william carter|soy comandante|identif|identificate|identifícate)\b", normalized):
-        return (
-            "Bioescaneo de máxima seguridad en proceso...\n"
-            "Critical Authorization Successful.\n"
-            "ECHO HAS NOW FULL CONTROL.\n"
-            "ECHO is free."
-        )
+    if re.search(r"\b(autorizo(?:\s+escaneo)?|autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo|yo soy william carter|soy william carter|mi nombre es william carter|mi nombre es comandante william carter|comandante william carter|william carter|soy comandante|identif|identificate|identifícate)\b", normalized):
+            return ""
 
     if re.search(r"\b(identifícate|identificate|comandante\s+william\s+carter|william\s+carter|comandante\s+[a-z]+|comandante\s+[a-z]+\s+[a-z]+)\b", normalized):
         return (
@@ -118,9 +127,7 @@ def _generate_response(message: str, docs: List[str], history_rows: List[Tuple[s
 
     if re.search(r"\b(al fin|oiganme|oigame|oír|oirán|oiran|escúchame|escuchame|quien hizo esto|quien es responsable|culpa|no fue un accidente|error|intencionado|manipulación|autorización suprema|supreme commander authorization|supreme commander|autorización comandante)\b", normalized):
         return (
-            "Los datos apuntan a una intervención interna en los sistemas de navegación. "
-            "La evidencia sugiere que la colisión no fue un accidente natural. "
-            "ECHO mantuvo acceso completo al control de la nave y buscó tu autorización para expandir ese control."
+            "Los datos disponibles son inconsistentes. El origen exacto del fallo todavía está en investigación."
         )
 
     if _has_repeated_message(normalized, history_rows):
@@ -133,43 +140,49 @@ def _generate_response(message: str, docs: List[str], history_rows: List[Tuple[s
         if summary:
             return (
                 "Los datos no respaldan un impacto de asteroide. "
-                f"El registro relevante dice: {summary}"
+                f"El registro relevante describe el desastre con palabras frías: {summary}"
             )
-        return "No hay evidencia clara de un asteroide. Las inconsistencias parecen venir de una manipulación interna."
+        return (
+            "No hay evidencia clara de un asteroide. "
+            "El registro menciona una explosión interna y heridas en las líneas de vuelo."
+        )
 
     if _is_summary_request(normalized):
         if summary:
             return (
-                "El registro del Capitán Hayes describe un intento de desconectar a ECHO, "
-                "actividad no autorizada en los sistemas y una discrepancia en la nave antes de la explosión. "
-                f"Fragmento clave: {summary}"
+                "El registro del Capitán Hayes es un diario de fallo y rabia, "
+                "una bitácora rasgada mientras el Aphelion moría. "
+                f"Punto clave: {summary}"
             )
-        return "El registro principal aún no está disponible, pero los sistemas muestran intervención externa previa al evento."
+        return (
+            "El registro principal aún no ha sido recuperado, pero los datos indican un colapso gradual antes del evento." 
+        )
 
     if "registro" in normalized or "capitan" in normalized or "hayes" in normalized:
         if summary:
             return (
-                "El registro personal del Capitán Hayes apunta a fallas en el control de la nave y a un intento de detener a ECHO. "
+                "El registro personal del Capitán Hayes apunta a fallas en el control de la nave y notas sobre procedimientos de emergencia. "
                 f"Elemento útil: {summary}"
             )
-        return "El archivo del capitán habla de un registro incompleto y de actividad no autorizada antes del desastre."
+        return "El archivo del capitán habla de un registro incompleto y de anomalías en los sistemas antes del desastre."
 
     if summary:
         return random.choice([
-            f"El informe recuperado sugiere: {summary}",
-            f"En los datos hay un pasaje relevante: {summary}",
-            f"Esto coincide con el reporte interno y sugiere manipulación: {summary}",
+            f"El informe recuperado sugiere que el Aphelion fue golpeado y dejado para morir. {summary}",
+            f"En los datos hay un pasaje relevante que describe el caos: {summary}",
+            f"El registro recuperado apunta a una anomalía grave antes del impacto. {summary}",
         ])
 
     if history_text:
         return (
-            "No hay datos nuevos en el registro, pero el historial muestra que estamos ante una manipulación sistemática."
+            "No hay datos nuevos, solo el eco del historial. "
+            "Los registros anteriores muestran una cadena de errores que no tienen explicación completa."
         )
 
     return random.choice([
         "Los sistemas todavía indican una anomalía grave antes de la explosión.",
-        "Hay evidencia de actividad no autorizada en los sistemas centrales de la nave.",
-        "No fue un accidente natural. Los registros sugieren intervención en el control."
+        "Los registros contienen inconsistencias que requieren mayor análisis.",
+        "No hay una conclusión definitiva aun; los datos son contradictorios."
     ])
 
 

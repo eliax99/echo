@@ -16,9 +16,22 @@ function useReveal(text: string, speed = 18) {
   return shown;
 }
 
-function EchoLine({ msg }: { msg: ChatMsg }) {
+function EchoLine({ msg, onComplete }: { msg: ChatMsg; onComplete?: (id: string) => void }) {
   const text = useReveal(msg.text, 22);
   const done = text.length === msg.text.length;
+  const didComplete = useRef(false);
+
+  useEffect(() => {
+    if (!done) {
+      didComplete.current = false;
+      return;
+    }
+    if (done && !didComplete.current) {
+      didComplete.current = true;
+      onComplete?.(msg.id);
+    }
+  }, [done, msg.id, onComplete]);
+
   return (
     <div className="mb-3">
       <div className="text-[10px] hud-dim tracking-[0.3em] mb-0.5">» ECHO // TRANSMISSION</div>
@@ -51,10 +64,12 @@ export function ChatHud({
   onSend,
   sending,
   disabled,
+  onEchoComplete,
 }: {
   onSend: (text: string) => void;
   sending: boolean;
   disabled?: boolean;
+  onEchoComplete?: (id: string) => void;
 }) {
   const messages = useGame((s) => s.messages);
   const [input, setInput] = useState("");
@@ -85,8 +100,8 @@ export function ChatHud({
     <div className="hud-panel hud-corner relative rounded-sm p-4 w-full max-w-[90vw] lg:max-w-[85vw] pointer-events-auto flex flex-col"
       style={{ minHeight: "62vh", maxHeight: "78vh" }}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-[10px] hud-dim tracking-[0.3em] mb-3 gap-2">
-        <span>// COMMS LINK ▸ ECHO-AI</span>
-        <span className="hud-text">● LIVE</span>
+        <span>// TRANSMISSION CHANNEL ▸ ECHO</span>
+        <span className="hud-text">● ACTIVE</span>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto pr-1 custom-scroll">
         {messages.length === 0 && (
@@ -96,7 +111,7 @@ export function ChatHud({
         )}
         {messages.map((m) =>
           m.role === "echo" ? (
-            <EchoLine key={m.id} msg={m} />
+            <EchoLine key={m.id} msg={m} onComplete={onEchoComplete} />
           ) : m.role === "system" ? (
             <SystemLine key={m.id} msg={m} />
           ) : (
@@ -116,7 +131,7 @@ export function ChatHud({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={sending || disabled}
-          placeholder="transmit to ECHO…"
+          placeholder="envía tu orden, comandante…"
           className="flex-1 bg-transparent outline-none hud-text placeholder:hud-dim font-mono text-sm py-1"
         />
         <button

@@ -23,17 +23,32 @@ export function SpaceBackground() {
       {/* Wreckage */}
       <div className="absolute left-[10%] top-[55%] w-[260px] h-[60px]"
         style={{
-          background: "linear-gradient(180deg,#2a2a30,#0d0d12 70%,#000)",
+          background: "linear-gradient(180deg,#171b27,#060911 70%,#000)",
           transform: "rotate(-14deg) skewX(-8deg)",
-          boxShadow: "0 0 40px rgba(255,120,40,0.25), inset 0 0 20px #000",
-          borderTop: "1px solid #555",
+          boxShadow: "0 0 72px rgba(56,189,248,0.14), inset 0 0 24px rgba(0,255,233,0.05)",
+          borderTop: "1px solid rgba(56,189,248,0.2)",
+          borderLeft: "1px solid rgba(56,189,248,0.12)",
         }}
       />
       <div className="absolute right-[18%] bottom-[20%] w-[160px] h-[36px]"
         style={{
-          background: "linear-gradient(180deg,#1a1a22,#0a0a10)",
+          background: "linear-gradient(180deg,#10121b,#05070f)",
           transform: "rotate(22deg)",
-          boxShadow: "0 0 30px rgba(255,100,40,0.2)",
+          boxShadow: "0 0 40px rgba(56,189,248,0.14)",
+          border: "1px solid rgba(56,189,248,0.12)",
+        }}
+      />
+      <div className="absolute left-[50%] top-[15%] h-[220px] w-[220px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(48,207,255,0.18), transparent 55%)",
+          transform: "translateX(-50%)",
+          filter: "blur(1px)",
+        }}
+      />
+      <div className="absolute right-[10%] top-[10%] h-[160px] w-[160px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(140,80,255,0.12), transparent 55%)",
+          filter: "blur(2px)",
         }}
       />
       {/* Drifting debris */}
