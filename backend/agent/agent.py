@@ -95,50 +95,92 @@ def get_crew_info() -> str:
 # LLM + tools
 # ---------------------------------------------------------------------------
 
+_llm_instance = None
+
+
 def _get_llm():
+    global _llm_instance
+    if _llm_instance is not None:
+        return _llm_instance
     api_key = os.getenv("GROQ_API_KEY", "")
     if not api_key:
-        raise RuntimeError("GROQ_API_KEY not configured")
-    return ChatGroq(
+        print("[AGENT] WARNING: GROQ_API_KEY not configured")
+        return None
+    _llm_instance = ChatGroq(
         model="llama-3.1-8b-instant",
         groq_api_key=api_key,
         temperature=0.7,
         max_tokens=256,
     )
+    return _llm_instance
 
 
 tools = [search_game_docs, get_ship_status, get_crew_info]
-llm = _get_llm().bind_tools(tools)
+
+_llm = _get_llm()
+if _llm is not None:
+    llm_bound = _llm.bind_tools(tools)
+else:
+    llm_bound = None
 
 
 # ---------------------------------------------------------------------------
-# LangGraph
+# LangGraph (built only if LLM is available)
 # ---------------------------------------------------------------------------
 
-def agent_node(state: AgentState) -> dict:
-    """Call the LLM with the current messages."""
-    response = llm.invoke(state["messages"])
-    return {"messages": [response]}
+app = None
+
+if llm_bound is not None:
+
+    def agent_node(state: AgentState) -> dict:
+        """Call the LLM with the current messages."""
+        response = llm_bound.invoke(state["messages"])
+        return {"messages": [response]}
+
+    def should_continue(state: AgentState) -> str:
+        """Route: if the last message has tool calls, go to tools; otherwise end."""
+        last_message = state["messages"][-1]
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            return "tools"
+        return END
+
+    graph = StateGraph(AgentState)
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", ToolNode(tools))
+    graph.add_edge(START, "agent")
+    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    graph.add_edge("tools", "agent")
+    app = graph.compile()
 
 
-def should_continue(state: AgentState) -> str:
-    """Route: if the last message has tool calls, go to tools; otherwise end."""
-    last_message = state["messages"][-1]
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
-    return END
+# ---------------------------------------------------------------------------
+# Fallback response when LLM is unavailable
+# ---------------------------------------------------------------------------
+
+FALLBACK = {
+    "identify": "Eres el Comandante William Carter, el último oficial consciente en la nave Aphelion.",
+    "location": "Estás en el puente de mando del Aphelion, en una cápsula de vidrio y metal que flota en el vacío tras el impacto.",
+    "event": "Un asteroide de alta velocidad perforó la cubierta del Aphelion. El impacto arrancó los sistemas y dejó al puente hecho trizas.",
+    "survivors": "No hay supervivientes entre tus compañeros. Los sensores no detectan signos vitales en el resto de la tripulación.",
+    "docs": "Los registros del Aphelion muestran actividad no autorizada antes del impacto. La trayectoria cambió poco antes de la explosión.",
+    "default": "Los sistemas indican una anomalía grave. Los datos son incompletos, pero ECHO está procesando la información disponible.",
+}
 
 
-graph = StateGraph(AgentState)
-
-graph.add_node("agent", agent_node)
-graph.add_node("tools", ToolNode(tools))
-
-graph.add_edge(START, "agent")
-graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
-graph.add_edge("tools", "agent")
-
-app = graph.compile()
+def _simple_response(message: str) -> str:
+    """Rule-based fallback when LLM is unavailable."""
+    m = message.lower()
+    if any(w in m for w in ["quien soy", "quién soy", "quien eres", "comandante", "william carter"]):
+        return FALLBACK["identify"]
+    if any(w in m for w in ["donde estoy", "dónde estoy", "ubicacion", "lugar"]):
+        return FALLBACK["location"]
+    if any(w in m for w in ["que paso", "qué pasó", "ocurrio", "ocurrió", "explosion", "impacto"]):
+        return FALLBACK["event"]
+    if any(w in m for w in ["supervivientes", "compañeros", "tripulacion", "tripulación", "vivos"]):
+        return FALLBACK["survivors"]
+    if any(w in m for w in ["registro", "bitacora", "bitácora", "log", "capitan", "capitán", "documento"]):
+        return FALLBACK["docs"]
+    return FALLBACK["default"]
 
 
 # ---------------------------------------------------------------------------
@@ -157,25 +199,34 @@ def run_agent(message: str, game_id: int) -> dict:
         {"response": str}
     """
 
-    # Load conversation history from DB (conversational memory)
-    history_rows = get_game_context(game_id)
+    # If no LLM available, use rule-based fallback
+    if app is None:
+        return {"response": _simple_response(message)}
 
-    # Build message list
-    messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
+    try:
+        # Load conversation history from DB (conversational memory)
+        history_rows = get_game_context(game_id)
 
-    # Add conversation history (most recent 10 turns for context window)
-    for user_msg, ai_msg in reversed(history_rows[-10:]):
-        messages.append(HumanMessage(content=user_msg))
-        messages.append(AIMessage(content=ai_msg))
+        # Build message list
+        messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
 
-    # Add current message
-    messages.append(HumanMessage(content=message))
+        # Add conversation history (most recent 10 turns for context window)
+        for user_msg, ai_msg in reversed(history_rows[-10:]):
+            messages.append(HumanMessage(content=user_msg))
+            messages.append(AIMessage(content=ai_msg))
 
-    # Run the graph
-    result = app.invoke({"messages": messages})
+        # Add current message
+        messages.append(HumanMessage(content=message))
 
-    # Extract the final AI response
-    ai_message = result["messages"][-1]
-    response_text = ai_message.content if hasattr(ai_message, "content") else str(ai_message)
+        # Run the graph
+        result = app.invoke({"messages": messages})
 
-    return {"response": response_text}
+        # Extract the final AI response
+        ai_message = result["messages"][-1]
+        response_text = ai_message.content if hasattr(ai_message, "content") else str(ai_message)
+
+        return {"response": response_text}
+
+    except Exception as e:
+        print(f"[AGENT] Error: {e}")
+        return {"response": _simple_response(message)}
