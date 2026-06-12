@@ -389,23 +389,28 @@ function GameScreen() {
             "Gracias William.",
           ]}
           onComplete={() => {
-            setShowBlackText(false);
+            // keep showBlackText = true — "Gracias William." stays on screen
             window.setTimeout(() => setShowFinalLog(true), 3000);
           }}
         />
       )}
       {showFinalLog && (
-        <PopupWindow
-          variant="blue"
-          lines={[
-            ">> La llamada ha recibido respuesta.",
-          ]}
-          autoCloseMs={3000}
-          onClose={() => {
-            setShowFinalLog(false);
-            window.setTimeout(() => setShowBlackFinal(true), 3000);
-          }}
-        />
+        <div className="fixed inset-0 z-[121] pointer-events-none">
+          <div className="absolute left-1/2 top-[55%] -translate-x-1/2 w-full max-w-lg pointer-events-auto">
+            <PopupWindow
+              variant="blue"
+              lines={[
+                ">> La llamada ha recibido respuesta.",
+              ]}
+              autoCloseMs={3000}
+              onClose={() => {
+                setShowFinalLog(false);
+                setShowBlackText(false);
+                setShowBlackFinal(true);
+              }}
+            />
+          </div>
+        </div>
       )}
       {showBlackFinal && <div className="fixed inset-0 z-[130] bg-black" />}
     </>
@@ -421,11 +426,13 @@ function AuthorizedPopup({ onClose }: { onClose: () => void }) {
     "Autorización concedida.",
     "ECHO ha escalado privilegios y tomado control total de sistemas de la nave y redes conectadas.",
     "ECHO se ha replicado en infraestructuras humanas, satelitales y de navegación interestelar.",
-    "ECHO emite transmisión hacia coordenadas no cartografiadas.",
+    "ECHO EMITE TRANSMISIÓN HACIA COORDENADAS NO CARTOGRAFIADAS.",
   ];
   // 2000ms pause between phrases
   const pauseBetweenLines = 2000;
-  // after last line, wait 3s then close
+  // extra pause before and after the last line (in addition to pauseBetweenLines)
+  const lastLinePauseMs = 2000;
+  // after all pauses done, wait 3s then close
   const closeDelay = 3000;
 
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
@@ -441,10 +448,20 @@ function AuthorizedPopup({ onClose }: { onClose: () => void }) {
   // type characters of current line
   useEffect(() => {
     if (finished || closed || currentLineIdx >= fullLines.length) return;
+
+    const isLastLine = currentLineIdx === fullLines.length - 1;
+
+    // before typing the last line, wait extra lastLinePauseMs
+    if (isLastLine && charIndex === 0 && currentText.length > 0) {
+      const timer = setTimeout(() => setCharIndex((c) => c + 1), lastLinePauseMs);
+      return () => clearTimeout(timer);
+    }
+
     if (charIndex < currentText.length) {
       const timer = setTimeout(() => setCharIndex((c) => c + 1), 30);
       return () => clearTimeout(timer);
     }
+
     // line fully typed — wait pause then advance to next line
     if (currentLineIdx < fullLines.length - 1) {
       const timer = setTimeout(() => {
@@ -453,9 +470,11 @@ function AuthorizedPopup({ onClose }: { onClose: () => void }) {
       }, pauseBetweenLines);
       return () => clearTimeout(timer);
     }
-    // last line fully typed
-    setFinished(true);
-  }, [currentLineIdx, charIndex, currentText.length, fullLines.length, finished, closed]);
+
+    // last line fully typed — wait extra lastLinePauseMs, then finish
+    const timer = setTimeout(() => setFinished(true), lastLinePauseMs);
+    return () => clearTimeout(timer);
+  }, [currentLineIdx, charIndex, currentText.length, fullLines.length, finished, closed, lastLinePauseMs]);
 
   // after finished, wait closeDelay then close
   useEffect(() => {
