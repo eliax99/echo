@@ -1,123 +1,107 @@
-# Escape Room AI
+# ECHO
+
+Juego estilo Escape Room donde conversas con una inteligencia artificial a bordo de una nave destruida.
 
 Proyecto final del Bootcamp Fullstack + IA.
 
-## Descripción
+---
 
-Escape Room AI es una aplicación web donde el usuario debe escapar de una habitación interactuando mediante lenguaje natural con una inteligencia artificial.
+## Cómo funciona
 
-La IA actúa como narrador del juego, responde a las acciones del jugador y utiliza una base de conocimiento mediante RAG para mantener la coherencia de la historia y los acertijos.
+Eres el comandante William Carter a bordo del **Aphelion**. La nave ha sufrido un accidente catastrófico y tienes que descubrir qué ocurrió.
 
-## Tecnologías
+Te comunicas con **ECHO**, la IA de a bordo, escribiendo en lenguaje natural. A partir de lo que preguntes, la historia avanza. Hay objetivos que completar y un desenlace oculto.
 
-### Frontend
+---
 
-* React
-* Vite
-* React Router
-* Context API
+## Stack técnico
 
-### Backend
+| Capa | Tecnología |
+|------|-----------|
+| Frontend | React + Vite + TanStack Router + Zustand + Tailwind CSS |
+| Backend | FastAPI (Python) |
+| Base de datos | PostgreSQL |
+| IA | OpenAI + LangChain + LangGraph |
+| Memoria IA | ChromaDB (RAG sobre documentos de la historia) |
+| Autenticación | JWT |
 
-* FastAPI
-* PostgreSQL
-* JWT Authentication
-* SQLAlchemy
+---
 
-### Inteligencia Artificial
+## Requisitos
 
-* OpenAI
-* LangChain
-* LangGraph
-* ChromaDB
+- Node.js >= 18
+- Python >= 3.10
+- PostgreSQL
+- Una API Key de OpenAI
 
-### Automatización
+---
 
-* N8N
+## Inicio rápido
 
-## Funcionalidades
+### 1. Backend
 
-* Registro e inicio de sesión
-* Rutas protegidas con JWT
-* Creación de partidas
-* Chat con IA
-* Historial de conversaciones
-* RAG sobre documentos del juego
-* Workflow N8N conectado a la API
-
-## Base de Datos
-
-### users
-
-* id
-* username
-* email
-* password_hash
-
-### games
-
-* id
-* user_id
-* status
-
-### chat_history
-
-* id
-* game_id
-* user_message
-* ai_response
-
-## Endpoints principales
-
-### Autenticación
-
-```http
-POST /auth/register
-POST /auth/login
+```bash
+cd backend
+cp .env.example .env   # rellena DATABASE_URL, SECRET_KEY, OPENAI_API_KEY
+python -m venv venv
+venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+python main.py
 ```
 
-### Chat
+### 2. Frontend
 
-```http
-POST /api/chat
-GET /api/chat/history/{game_id}
+```bash
+cd frontend
+cp .env.example .env   # rellena VITE_API_URL (ej: http://localhost:8000)
+npm install
+npm run dev
 ```
 
-## Estructura del proyecto
+Abre el navegador en la URL que indique la terminal.
 
-```text
-escape-room-ai/
-│
-├── frontend/
-│
-├── backend/
-│   ├── agent/
-│   ├── docs/
-│   ├── models/
-│   ├── routers/
-│   └── main.py
-│
-├── n8n-workflows/
-│
-└── README.md
-```
+---
 
 ## Variables de entorno
 
-### Backend
+### Backend (.env)
 
-```env
-DATABASE_URL=
-SECRET_KEY=
-OPENAI_API_KEY=
-N8N_WEBHOOK_URL=
+```
+DATABASE_URL=postgresql://usuario:password@localhost:5432/echo
+SECRET_KEY=clave_secreta_para_jwt
+OPENAI_API_KEY=sk-...
 ```
 
-### Frontend
+### Frontend (.env)
 
-```env
-VITE_API_URL=
 ```
+VITE_API_URL=http://localhost:8000
+```
+
+---
+
+## Estructura del proyecto
+
+```
+echo/
+├── frontend/          # Interfaz de juego
+│   └── src/
+│       ├── components/   # Hud, visor, popups, espacio
+│       ├── routes/       # Páginas (auth, game, etc.)
+│       ├── store/        # Estado global con Zustand
+│       └── lib/          # API calls, utilidades
+│
+├── backend/           # API y lógica del juego
+│   ├── agent/         # Agente conversacional (LangChain)
+│   ├── rag/           # Base de conocimiento (ChromaDB)
+│   ├── routers/       # Endpoints REST
+│   ├── models/        # Modelos de base de datos
+│   └── schemas/       # Validación con Pydantic
+│
+└── scripts/           # Utilidades
+```
+
+---
 
 ## Autor
 
