@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useGame, type ChatMsg } from "@/store/game";
 
 function useReveal(text: string, speed = 18) {
@@ -50,19 +50,30 @@ function UserLine({ msg }: { msg: ChatMsg }) {
 export function ChatHud({
   onSend,
   sending,
+  disabled,
 }: {
   onSend: (text: string) => void;
   sending: boolean;
+  disabled?: boolean;
 }) {
   const messages = useGame((s) => s.messages);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, sending]);
 
-  function submit(e: React.FormEvent) {
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [sending]);
+
+  function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const v = input.trim();
     if (!v || sending) return;
@@ -71,9 +82,9 @@ export function ChatHud({
   }
 
   return (
-    <div className="hud-panel hud-corner relative rounded-sm p-4 w-full max-w-xl pointer-events-auto flex flex-col"
-      style={{ height: "min(56vh, 520px)" }}>
-      <div className="flex items-center justify-between text-[10px] hud-dim tracking-[0.3em] mb-2">
+    <div className="hud-panel hud-corner relative rounded-sm p-4 w-full max-w-[90vw] lg:max-w-[85vw] pointer-events-auto flex flex-col"
+      style={{ minHeight: "62vh", maxHeight: "78vh" }}>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-[10px] hud-dim tracking-[0.3em] mb-3 gap-2">
         <span>// COMMS LINK ▸ ECHO-AI</span>
         <span className="hud-text">● LIVE</span>
       </div>
@@ -98,18 +109,19 @@ export function ChatHud({
           </div>
         )}
       </div>
-      <form onSubmit={submit} className="mt-3 flex gap-2 border-t border-[color:var(--hud)]/30 pt-3">
+      <form onSubmit={submit} className="mt-4 flex gap-2 border-t border-[color:var(--hud)]/30 pt-3">
         <span className="hud-text text-sm pt-1.5">{">"}</span>
         <input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={sending}
+          disabled={sending || disabled}
           placeholder="transmit to ECHO…"
           className="flex-1 bg-transparent outline-none hud-text placeholder:hud-dim font-mono text-sm py-1"
         />
         <button
           type="submit"
-          disabled={sending || !input.trim()}
+          disabled={sending || disabled || !input.trim()}
           className="border border-[color:var(--hud)] hud-text text-xs px-3 tracking-[0.25em] hover:bg-[color:var(--hud)]/20 disabled:opacity-40"
         >
           SEND

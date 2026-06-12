@@ -1,7 +1,8 @@
 import { useGame } from "@/store/game";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
-function Bar({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
-  return (
+function Bar({ label, value, warn, tooltip }: { label: string; value: number; warn?: boolean; tooltip?: string }) {
+  const barContent = (
     <div className="mb-2">
       <div className="flex justify-between text-[9px] tracking-[0.25em] mb-0.5">
         <span className={warn ? "hud-warn" : "hud-dim"}>{label}</span>
@@ -15,20 +16,42 @@ function Bar({ label, value, warn }: { label: string; value: number; warn?: bool
       </div>
     </div>
   );
+
+  if (!tooltip) {
+    return barContent;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{barContent}</TooltipTrigger>
+      <TooltipContent side="right">{tooltip}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function VitalsHud() {
   const { oxygen, pressure, integrity, phase } = useGame();
   return (
-    <div className="hud-panel hud-corner relative rounded-sm p-3 w-56 pointer-events-auto">
-      <div className="flex justify-between text-[9px] hud-dim tracking-[0.3em] mb-2">
-        <span>// SUIT VITALS</span>
-        <span className="hud-text">PH{phase}</span>
+    <TooltipProvider delayDuration={0}>
+      <div className="hud-panel hud-corner relative rounded-sm p-3 w-56 pointer-events-auto">
+        <div className="flex justify-between text-[9px] hud-dim tracking-[0.3em] mb-2">
+          <span>// SUIT VITALS</span>
+          <span className="hud-text">PH{phase}</span>
+        </div>
+        <Bar
+          label="O₂"
+          value={oxygen}
+          warn={oxygen < 30}
+          tooltip={
+            oxygen < 30
+              ? "Critical oxygen level detected. Restore air supply immediately."
+              : "Suit oxygen reserves."
+          }
+        />
+        <Bar label="PRESSURE" value={pressure} warn={pressure < 40} />
+        <Bar label="HULL INT." value={integrity} warn={integrity < 30} />
       </div>
-      <Bar label="O₂" value={oxygen} warn={oxygen < 30} />
-      <Bar label="PRESSURE" value={pressure} warn={pressure < 40} />
-      <Bar label="HULL INT." value={integrity} warn={integrity < 30} />
-    </div>
+    </TooltipProvider>
   );
 }
 

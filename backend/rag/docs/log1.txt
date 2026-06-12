@@ -1,3 +1,1 @@
-Sistema de soporte vital operativo al 63%.
-
 Se detectan fallos de comunicación.
