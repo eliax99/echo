@@ -1,57 +1,63 @@
-from pathlib import Path
-import re
+"""
+RAG retriever using ChromaDB with default (onnx-based) embeddings.
+Much lighter than sentence-transformers — fits in Render's 512MB RAM.
+"""
 
+from pathlib import Path
+import chromadb
 
 DOCS_DIR = Path(__file__).resolve().parent / "docs"
+CHROMA_PATH = str(Path(__file__).resolve().parent / "chroma_db")
+
+# ChromaDB client with persistent storage
+_client = chromadb.PersistentClient(path=CHROMA_PATH)
+_collection = _client.get_or_create_collection("echo_docs")
 
 
-def _load_all_docs():
-    """Load all .txt files from the docs directory."""
-    docs = []
+def _ensure_docs_indexed():
+    """Index all .txt docs into ChromaDB if not already present."""
+    if _collection.count() > 0:
+        return  # already indexed
+
     if not DOCS_DIR.exists():
-        return docs
+        return
+
     for file in sorted(DOCS_DIR.glob("*.txt")):
         try:
             text = file.read_text(encoding="utf-8").strip()
-            if text:
-                docs.append(text)
-        except Exception:
-            pass
-    return docs
+            if not text:
+                continue
+            # Split into chunks of ~500 chars
+            chunks = []
+            for i in range(0, len(text), 500):
+                chunk = text[i : i + 500].strip()
+                if chunk:
+                    chunks.append(chunk)
+
+            for i, chunk in enumerate(chunks):
+                doc_id = f"{file.stem}_{i}"
+                _collection.add(
+                    ids=[doc_id],
+                    documents=[chunk],
+                    metadatas=[{"source": file.name}],
+                )
+            print(f"[RAG] Indexed {file.name}: {len(chunks)} chunks")
+        except Exception as e:
+            print(f"[RAG] Error indexing {file.name}: {e}")
 
 
-# Cache docs in memory (they're tiny)
-_all_docs = None
+# Index on import
+_ensure_docs_indexed()
 
 
-def _get_docs():
-    global _all_docs
-    if _all_docs is None:
-        _all_docs = _load_all_docs()
-    return _all_docs
-
-
-def search_docs(query: str, k: int = 3):
-    """Simple keyword-based search across game docs. No ML model needed."""
+def search_docs(query: str, k: int = 3) -> list[str]:
+    """Search game documents using ChromaDB's default embeddings."""
     try:
-        docs = _get_docs()
-        if not docs:
+        if _collection.count() == 0:
             return []
-
-        # Split query into words, normalize
-        words = set(re.findall(r"[a-záéíóúüñ]+", query.lower()))
-
-        scored = []
-        for doc in docs:
-            doc_lower = doc.lower()
-            # Count how many query words appear in the doc
-            score = sum(1 for w in words if w in doc_lower)
-            if score > 0:
-                scored.append((score, doc))
-
-        # Return top-k docs sorted by relevance
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [doc for _, doc in scored[:k]]
+        results = _collection.query(query_texts=[query], n_results=k)
+        docs = results.get("documents", [[]])[0]
+        return docs
     except Exception as e:
         print(f"[search_docs] Error: {e}")
         return []

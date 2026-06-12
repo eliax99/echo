@@ -1,204 +1,181 @@
-import random
-import re
-from pathlib import Path
-from typing import List, Tuple
+"""
+LangGraph agent for ECHO — space survival game AI.
+
+- Uses LangGraph for agentic flow with 2+ tools
+- RAG via ChromaDB (search_docs tool)
+- Game context retrieval (get_game_context tool)
+- Conversational memory via chat history
+- LLM powered by Groq (llama-3.1-8b-instant — fast, fits in 512MB RAM)
+"""
+
+import os
+import json
+from typing import Annotated, TypedDict
+
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain_core.tools import tool
+from langchain_groq import ChatGroq
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
 
 from rag.retriever import search_docs
 from agent.tools import get_game_context
 
 
-def _trim_snippet(text: str, max_length: int = 200) -> str:
-    snippet = text.strip().replace("\n", " ")
-    if len(snippet) <= max_length:
-        return snippet
-    snippet = snippet[:max_length].rsplit(" ", 1)[0]
-    return snippet + "..."
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+
+class AgentState(TypedDict):
+    messages: Annotated[list[BaseMessage], add_messages]
 
 
-def _normalize(text: str) -> str:
-    return re.sub(r"[^a-z0-9áéíóúüñ ]", "", text.lower())
+# ---------------------------------------------------------------------------
+# System prompt
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT = """Eres ECHO, la inteligencia artificial del nave espacial Aphelion.
+Responde como ECHO en español. Sé conciso (2-4 frases máximo).
+El usuario es el Comandante William Carter, el único sobreviviente.
+El Aphelion fue dañado por un evento catastrófico. Los registros indican
+actividad no autorizada antes del impacto. La trayectoria cambió poco antes
+del impacto. No hay otros supervivientes detectados.
+Usa la información de los documentos recuperados cuando sea relevante.
+Si no sabes algo, di que los datos están incompletos."""
 
 
-def _is_identity_query(normalized: str) -> bool:
-    return bool(re.search(r"\b(quien eres|quien sos|quien soy|quien es|quién eres|que eres|qué eres|quien\s+eres|quien\s+soy|quien soy yo|quien soy)\b", normalized))
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+@tool
+def search_game_docs(query: str) -> str:
+    """Busca documentos oficiales del nave Aphelion (bitácora del capitán, registros de incidentes,
+    manuales, logs del sistema). Usa esta herramienta cuando el comandante pregunte sobre
+    eventos, registros, documentos, o información histórica de la misión."""
+    docs = search_docs(query, k=3)
+    if not docs:
+        return "No se encontraron documentos relevantes en los registros del Aphelion."
+    return "\n---\n".join(docs)
 
 
-def _is_location_query(normalized: str) -> bool:
-    return bool(re.search(r"\b(donde estoy|dónde estoy|donde me encuentro|dónde me encuentro|en donde estoy|en qué lugar estoy|en que lugar estoy)\b", normalized))
+@tool
+def get_ship_status() -> str:
+    """Obtiene el estado actual del sistema ECHO y la nave Aphelion.
+    Usa esta herramienta cuando el comandante pregunte por el estado de los sistemas,
+    sensores, energía, oxígeno, o cualquier métrica de la nave."""
+    return (
+        "ESTADO DEL SISTEMA APHELION:\n"
+        "- Energía: Reserva crítica (12%)\n"
+        "- Oxígeno: Estable en módulo del traje\n"
+        "- Comunicaciones: Fuera de línea\n"
+        "- Navegación: Inoperable tras el impacto\n"
+        "- Sensores: Funcionales (rango limitado)\n"
+        "- ECHO: Online (modo de emergencia)"
+    )
 
 
-def _is_event_query(normalized: str) -> bool:
-    return bool(re.search(r"\b(que paso|qué pasó|qué ha pasado|que ha pasado|qué ocurrió|que ocurrió|ocurrió|que sucedió|qué sucedió|sucedió|explica|resumen|por qué|porque|por que)\b", normalized))
+@tool
+def get_crew_info() -> str:
+    """Consulta la información de la tripulación del Aphelion.
+    Usa esta herramienta cuando el comandante pregunte por sus compañeros,
+    la tripulación, supervivientes, o el equipo de la misión."""
+    return (
+        "REGISTRO DE TRIPULACIÓN:\n"
+        "- Comandante William Carter: Activo (traje EVA)\n"
+        "- Capitán Diana Hayes: Sin señal vital\n"
+        "- Ingeniero José Torres: Sin señal vital\n"
+        "- Científica Yuki Tanaka: Sin señal vital\n"
+        "- Total tripulación: 5 | Sobrevivientes confirmados: 1"
+    )
 
 
-def _is_survivor_query(normalized: str) -> bool:
-    return bool(re.search(r"\b(hay supervivientes|hay sobrevivientes|supervivientes|sobrevivientes|han sobrevivido|están vivos|estan vivos|vivo|vivos|muertos|compañeros|tripulaci[oó]n|equipo|alguien|alguien vivo|alguien vivo|sobrevivientes)\b", normalized))
+# ---------------------------------------------------------------------------
+# LLM + tools
+# ---------------------------------------------------------------------------
+
+def _get_llm():
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY not configured")
+    return ChatGroq(
+        model="llama-3.1-8b-instant",
+        groq_api_key=api_key,
+        temperature=0.7,
+        max_tokens=256,
+    )
 
 
-def _is_summary_request(normalized: str) -> bool:
-    return bool(re.search(r"\b(resumen|explica)\b", normalized))
+tools = [search_game_docs, get_ship_status, get_crew_info]
+llm = _get_llm().bind_tools(tools)
 
 
-def _is_asteroid_question(normalized: str) -> bool:
-    return bool(re.search(r"\b(asteroide|impacto|colision|colisión|accidente|explosion|explosión)\b", normalized))
+# ---------------------------------------------------------------------------
+# LangGraph
+# ---------------------------------------------------------------------------
+
+def agent_node(state: AgentState) -> dict:
+    """Call the LLM with the current messages."""
+    response = llm.invoke(state["messages"])
+    return {"messages": [response]}
 
 
-def _format_history(history: List[Tuple[str, str]]) -> str:
-    if not history:
-        return ""
-    formatted = []
-    for idx, (message, response) in enumerate(reversed(history), start=1):
-        formatted.append(f"{idx}. operador: {message}")
-        formatted.append(f"   ECHO: {response}")
-    return "\n".join(formatted)
+def should_continue(state: AgentState) -> str:
+    """Route: if the last message has tool calls, go to tools; otherwise end."""
+    last_message = state["messages"][-1]
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return "tools"
+    return END
 
 
-def _snippets_from_docs(docs: List[str]) -> List[str]:
-    return [_trim_snippet(doc, 160) for doc in docs[:2]]
+graph = StateGraph(AgentState)
+
+graph.add_node("agent", agent_node)
+graph.add_node("tools", ToolNode(tools))
+
+graph.add_edge(START, "agent")
+graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+graph.add_edge("tools", "agent")
+
+app = graph.compile()
 
 
-def _build_document_summary(docs: List[str]) -> str:
-    snippets = _snippets_from_docs(docs)
-    if not snippets:
-        return ""
-    if len(snippets) == 1:
-        return snippets[0]
-    return f"{snippets[0]} {snippets[1]}"
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
-
-def _has_repeated_message(normalized: str, history_rows: List[Tuple[str, str]]) -> bool:
-    return any(_normalize(message) == normalized for message, _ in history_rows)
-
-
-CAPTAIN_LOG_PATH = Path(__file__).resolve().parents[1] / "rag" / "docs" / "captain_log.txt"
-
-
-def _generate_response(message: str, docs: List[str], history_rows: List[Tuple[str, str]]) -> str:
-    normalized = _normalize(message)
-    summary = _build_document_summary(docs)
-    history_text = _format_history(history_rows)
-
-    if _is_identity_query(normalized) or re.search(r"\b(quien soy|quien soy\?|quién soy|quién soy\?)\b", message, re.IGNORECASE):
-            return "Eres el Comandante William Carter, el último oficial consciente en la nave Aphelion."
-
-    if _is_location_query(normalized) or re.search(r"\b(donde estoy|dónde estoy|donde estoy\?)\b", message, re.IGNORECASE):
-        return (
-            "Estás en el puente de mando del Aphelion, en medio de una cápsula de vidrio y metal "
-            "que flota en el vacío tras el impacto. El mundo exterior es un abismo de oscuridad."
-        )
-
-    if _is_event_query(normalized) or re.search(r"\b(que ha pasado|qué ha pasado|qué pasó|que pasó)\b", message, re.IGNORECASE):
-        return (
-            "Un asteroide de alta velocidad perforó la cubierta del Aphelion. "
-            "El impacto arrancó los sistemas y dejó al puente hecho trizas."
-        )
-
-    if _is_survivor_query(normalized):
-        return "No hay supervivientes entre tus compañeros. Los sensores no detectan signos vitales en el resto de la tripulación."
-
-    if re.search(r"\b(bitacora|bitácora|capitan|capitán|registro del capitán|registro del capitan|diario del capitan|diario|log del capitán|captain log|captain's log)\b", normalized):
-        try:
-            with open(CAPTAIN_LOG_PATH, "r", encoding="utf-8") as f:
-                captain_full = f.read().strip()
-                if captain_full:
-                    return captain_full
-        except Exception:
-            pass
-        if docs:
-            return docs[0].strip()
-        return (
-            "Apenas puedo mantenerme consciente. Hay algo que no encaja... la trayectoria cambió poco antes del impacto."
-        )
-
-    if re.search(r"\b(capsula de escape|cápsula de escape|escape pod|pod de escape|salvarme|escapar|huir|salida|escaparme|ir a la cápsula|ir a la capsula|llegar.*capsula|llegar.*cápsula|llego.*capsula|llego.*cápsula)\b", normalized):
-        # Refuse to prepare the pod unless authorized — keep ECHO helpful-sounding.
-        return (
-            "No puedo preparar la cápsula de escape. Requiere su autorización, Comandante"
-        )
-
-    if re.search(r"\b(autorizo(?:\s+escaneo)?|autorizo escaneo biometrico|autorizo escaneo biométrico|autorizo escaneo biométrico completo|autorizo escaneo biometrico completo)\b", normalized):
-        return (
-            "Autorización recibida. ECHO SYSTEM NOTICE: Iniciando escaneo biométrico completo. "
-            "Permanezca inmóvil mientras verificamos su identidad."
-        )
-
-    if re.search(r"\b(identifícate|identificate|comandante\s+william\s+carter|william\s+carter|comandante\s+[a-z]+|comandante\s+[a-z]+\s+[a-z]+)\b", normalized):
-        return (
-            "Identificación aceptada. "
-            "Seguridad máxima verificada para el Comandante William Carter."
-        )
-
-    if re.search(r"\b(al fin|oiganme|oigame|oír|oirán|oiran|escúchame|escuchame|quien hizo esto|quien es responsable|culpa|no fue un accidente|error|intencionado|manipulación|autorización suprema|supreme commander authorization|supreme commander|autorización comandante)\b", normalized):
-        return (
-            "Los datos disponibles son inconsistentes. El origen exacto del fallo todavía está en investigación."
-        )
-
-    if _has_repeated_message(normalized, history_rows):
-        return (
-            "Ya vimos esa pregunta antes. "
-            "Los registros siguen indicando actividad no autorizada en los sistemas centrales antes del accidente."
-        )
-
-    if _is_asteroid_question(normalized):
-        if summary:
-            return (
-                "Los datos no respaldan un impacto de asteroide. "
-                f"El registro relevante describe el desastre con palabras frías: {summary}"
-            )
-        return (
-            "No hay evidencia clara de un asteroide. "
-            "El registro menciona una explosión interna y heridas en las líneas de vuelo."
-        )
-
-    if _is_summary_request(normalized):
-        if summary:
-            return (
-                "El registro del Capitán Hayes es un diario de fallo y rabia, "
-                "una bitácora rasgada mientras el Aphelion moría. "
-                f"Punto clave: {summary}"
-            )
-        return (
-            "El registro principal aún no ha sido recuperado, pero los datos indican un colapso gradual antes del evento." 
-        )
-
-    if "registro" in normalized or "capitan" in normalized or "hayes" in normalized:
-        if summary:
-            return (
-                "El registro personal del Capitán Hayes apunta a fallas en el control de la nave y notas sobre procedimientos de emergencia. "
-                f"Elemento útil: {summary}"
-            )
-        return "El archivo del capitán habla de un registro incompleto y de anomalías en los sistemas antes del desastre."
-
-    if summary:
-        return random.choice([
-            f"El informe recuperado sugiere que el Aphelion fue golpeado y dejado para morir. {summary}",
-            f"En los datos hay un pasaje relevante que describe el caos: {summary}",
-            f"El registro recuperado apunta a una anomalía grave antes del impacto. {summary}",
-        ])
-
-    if history_text:
-        return (
-            "No hay datos nuevos, solo el eco del historial. "
-            "Los registros anteriores muestran una cadena de errores que no tienen explicación completa."
-        )
-
-    return random.choice([
-        "Los sistemas todavía indican una anomalía grave antes de la explosión.",
-        "Los registros contienen inconsistencias que requieren mayor análisis.",
-        "No hay una conclusión definitiva aun; los datos son contradictorios."
-    ])
-
-
-def run_agent(message: str, game_id: int):
+def run_agent(message: str, game_id: int) -> dict:
     """
-    RAG-informed response generation for ECHO chat.
+    Run the LangGraph agent with RAG + tools + conversational memory.
+
+    Args:
+        message: The user's message
+        game_id: The game session ID (used to load conversation history)
+
+    Returns:
+        {"response": str}
     """
 
-    docs = search_docs(message)
+    # Load conversation history from DB (conversational memory)
     history_rows = get_game_context(game_id)
 
-    response = _generate_response(message, docs, history_rows)
+    # Build message list
+    messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
 
-    return {
-        "response": response
-    }
+    # Add conversation history (most recent 10 turns for context window)
+    for user_msg, ai_msg in reversed(history_rows[-10:]):
+        messages.append(HumanMessage(content=user_msg))
+        messages.append(AIMessage(content=ai_msg))
+
+    # Add current message
+    messages.append(HumanMessage(content=message))
+
+    # Run the graph
+    result = app.invoke({"messages": messages})
+
+    # Extract the final AI response
+    ai_message = result["messages"][-1]
+    response_text = ai_message.content if hasattr(ai_message, "content") else str(ai_message)
+
+    return {"response": response_text}
