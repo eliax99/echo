@@ -1,4 +1,7 @@
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+if (typeof window !== "undefined") {
+  console.log("[ECHO API] BASE URL:", BASE);
+}
 
 export async function authRequest(
   path: "/auth/register" | "/auth/login",
